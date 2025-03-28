@@ -1,0 +1,49 @@
+set dotenv-load := true
+set positional-arguments := true
+
+rustflags := "-C target-feature=+crt-static"
+rust_target := "x86_64-unknown-linux-gnu"
+
+default:
+    @just --list
+
+build:
+    RUSTFLAGS='{{rustflags}}' \
+    cargo build \
+        --release \
+        --target '{{rust_target}}'
+
+dev-watch-server *args:
+    RUSTFLAGS='{{rustflags}}' \
+    cargo watch \
+        --clear \
+        --quiet \
+        --watch './src' \
+        --exec 'run --target "{{rust_target}}" -- {{args}}' \
+
+dev-run-server *args:
+    RUSTFLAGS='{{rustflags}}' \
+    cargo run \
+        --target "{{rust_target}}" \
+        -- {{args}} \
+
+fmt-dev: && fmt
+    rustup run nightly cargo fmt --all \
+
+lint:
+    cargo clippy \
+        --workspace \
+        --all-features \
+        -- \
+
+lint-fix:
+    cargo clippy \
+        --fix \
+        --allow-dirty \
+        --allow-staged \
+        --workspace \
+        --all-features \
+        -- \
+
+fmt: lint-fix
+    cargo fmt --all \

@@ -1,0 +1,196 @@
+---
+import { SEO, type Link, type Meta, type TwitterCardType } from "astro-seo";
+import type { DeepPartial } from "ts-essentials";
+import type { SetNonNullable, Simplify } from "type-fest";
+import merge from "lodash/fp/merge";
+import {
+  BUILD_DATE,
+  links,
+  SITE_DESCRIPTION,
+  SITE_TITLE,
+  SITE_URL,
+} from "../app/consts";
+import type { HTMLAttributes } from "astro/types";
+
+type SeoPropsStrict = {
+  title?: string;
+  titleTemplate?: string;
+  titleDefault?: string;
+  charset?: string;
+  description?: string;
+  canonical?: URL | string;
+  nofollow?: boolean;
+  noindex?: boolean;
+  languageAlternates?: {
+    href: URL | string;
+    hrefLang: string;
+  }[];
+  openGraph?: {
+    basic: {
+      title: string;
+      type: string;
+      image: string;
+      url?: URL | string;
+    };
+    optional?: {
+      audio?: string;
+      description?: string;
+      determiner?: string;
+      locale?: string;
+      localeAlternate?: string[];
+      siteName?: string;
+      video?: string;
+    };
+    image?: {
+      url?: URL | string;
+      secureUrl?: URL | string;
+      type?: string;
+      width?: number;
+      height?: number;
+      alt?: string;
+    };
+    article?: {
+      publishedTime?: string;
+      modifiedTime?: string;
+      expirationTime?: string;
+      authors?: string[];
+      section?: string;
+      tags?: string[];
+    };
+  };
+  twitter?: {
+    card?: TwitterCardType;
+    site?: string;
+    creator?: string;
+    title?: string;
+    description?: string;
+    image?: URL | string;
+    imageAlt?: string;
+  };
+  fediverse?: {
+    creator?: string[];
+  };
+  extend?: {
+    link?: Partial<Link>[];
+    meta?: Partial<Meta>[];
+  };
+  surpressWarnings?: boolean;
+};
+
+export type SeoProps = DeepPartial<SeoPropsStrict>;
+
+export type ImageProp = {
+  data?: string | ImageMetadata;
+  alt?: string;
+};
+
+type PreloadFile = Simplify<
+  SetNonNullable<Required<Pick<HTMLAttributes<"link">, "href" | "as" | "type">>>
+>;
+
+type Props = {
+  title?: string;
+  description?: string;
+  image?: ImageProp;
+  seo?: SeoProps;
+  preloadFiles?: PreloadFile[];
+};
+
+const {
+  title,
+  description = SITE_DESCRIPTION,
+  image: imageProp,
+  seo: seoProp = {},
+  preloadFiles,
+} = Astro.props;
+
+const image = {
+  src: undefined,
+  metadata: undefined,
+  alt: imageProp?.alt,
+} as {
+  src: string | undefined;
+  metadata: ImageMetadata | undefined;
+  alt: string | undefined;
+};
+
+const imageData = imageProp?.data;
+switch (typeof imageData) {
+  case "undefined":
+    break;
+  case "string":
+    image.src = imageData;
+    break;
+  default:
+    try {
+      image.src = new URL(imageData.src).toString();
+    } catch {
+      // ignore errors
+    }
+    try {
+      image.src = new URL(imageData.src, import.meta.env.SITE).toString();
+    } catch {
+      // ignore errors
+    }
+    image.metadata = imageData;
+    break;
+}
+
+const seoData = merge(
+  {
+    title: title ?? SITE_TITLE,
+    titleDefault: SITE_TITLE,
+    titleTemplate: `%s | ${SITE_TITLE}`,
+    openGraph: {
+      basic: {
+        type: "website",
+        title: title ?? SITE_TITLE,
+        url: SITE_URL,
+        image: image.src ?? "",
+      },
+      optional: {
+        description,
+        locale: "en_US",
+        siteName: SITE_TITLE,
+      },
+      image: {
+        alt: image.alt,
+        url: image.src,
+        height: image.metadata?.height,
+        width: image.metadata?.width,
+        type: image.metadata?.format
+          ? `image/${image.metadata.format}`
+          : undefined,
+      },
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
+    fediverse: {
+      creator: [links.mastodon.handle],
+    },
+    surpressWarnings: true,
+  } as SeoPropsStrict,
+  seoProp
+);
+---
+
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="build-date" content={BUILD_DATE.toISOString()} />
+<link rel="icon" type="image/x-icon" href="/favicon.ico" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+<link rel="manifest" href="/site.webmanifest" />
+<link rel="me" href={links.mastodon.href} />
+{preloadFiles?.map((x) => <link rel="preload" {...x} />)}
+<SEO {...seoData} />
+{
+  seoData.fediverse?.creator?.map((handle) => (
+    <meta name="fediverse:creator" content={handle} />
+  ))
+}

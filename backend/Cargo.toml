@@ -1,0 +1,56 @@
+[package]
+name = "zet-live"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.8.1", features = ["macros", "ws"] }
+axum-client-ip = "0.7.0"
+chrono = { version = "0.4.40", features = ["serde"] }
+clap = { version = "4.5.32", features = ["derive", "env"] }
+clap_complete = "4.5.47"
+dotenvy = "0.15.7"
+futures = "0.3.31"
+include_dir = { version = "0.7.4", features = ["metadata"] }
+listenfd = "1.0.2"
+minicbor-serde = { version = "0.4.1", features = ["full"] }
+once_cell = { version = "1.21.1", features = ["parking_lot"] }
+parking_lot = { version = "0.12.3", features = ["deadlock_detection"] }
+prost = { version = "0.13.5", features = ["prost-derive"] }
+rand = "0.9.0"
+reqwest = { version = "0.12.15", default-features = false, features = ["json", "deflate", "gzip", "brotli", "rustls-tls", "trust-dns", "cookies", "stream", "multipart"] }
+serde = { version = "1.0.219", features = ["alloc", "derive"] }
+serde_json = { version = "1.0.140", features = ["alloc"] }
+thiserror = "2.0.12"
+tokio = { version = "1.44.1", features = ["full"] }
+tower = "0.5.2"
+tower-http = { version = "0.6.2", features = ["full"] }
+tower-serve-static = { version = "0.1.1", features = ["metadata"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["parking_lot", "env-filter", "json"] }
+ulid = "1.2.1"
+url = { version = "2.5.4", features = ["serde"] }
+validator = { version = "0.20.0", features = ["derive"] }
+
+[lints.clippy]
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+module_name_repetitions = "allow"
+single_match_else = "allow"
+manual_let_else = "allow"
+uninlined_format_args = "allow"
+missing_panics_doc = "allow"
+missing_errors_doc = "allow"
+no_effect_underscore_binding = "allow"
+cognitive_complexity = "allow"
+
+[profile.release]
+strip = true
+# opt-level = "s"
+lto = "thin"
+# panic = "abort"
+codegen-units = 1
+
+[build-dependencies]
+prost-build = "0.13.5"

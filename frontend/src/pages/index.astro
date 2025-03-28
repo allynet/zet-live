@@ -1,0 +1,306 @@
+---
+import BaseHead from "../components/BaseHead.astro";
+---
+
+<html lang="en">
+  <head>
+    <BaseHead title="Live view" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body,
+      #map {
+        height: 100%;
+      }
+    </style>
+    <style is:global>
+      .vehicle-marker {
+        display: flex;
+        aspect-ratio: 1;
+        align-items: center;
+        justify-content: center;
+        background-color: red;
+        border-radius: 0.5em;
+      }
+
+      .vehicle-marker-name {
+        flex: 1 0 auto;
+        line-height: 1em;
+        padding: 0.5rem;
+        font-weight: bold;
+        font-family: sans-serif;
+        font-size: 1.2rem;
+        color: white;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script>
+      import "maplibre-gl/dist/maplibre-gl.css";
+      import {
+        Map as MaplibreglMap,
+        Marker as MaplibreglMarker,
+        NavigationControl,
+      } from "maplibre-gl";
+      import type { V1Message } from "../app/v1/entity/message";
+      import { VehicleV1 } from "../app/v1/entity/vehicle";
+      import WorkerScript from "../scripts/worker.ts?worker";
+      import type { WorkerResponse } from "../scripts/worker";
+      import { WEBSOCKET_URL } from "astro:env/client";
+
+      const websocketUrl = WEBSOCKET_URL || "/api/v1/ws";
+
+      const worker = new WorkerScript();
+
+      // Initialise the map
+      const map = new MaplibreglMap({
+        container: "map",
+        hash: true,
+        style: {
+          version: 8,
+          sources: {
+            osm: {
+              type: "raster",
+              tiles: ["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],
+              tileSize: 256,
+              attribution: "&copy; OpenStreetMap Contributors",
+              maxzoom: 19,
+            },
+          },
+          layers: [
+            {
+              id: "osm",
+              type: "raster",
+              source: "osm", // This must match the source key above
+            },
+          ],
+        },
+        center: [16, 45.8],
+        zoom: 12,
+      });
+      map.addControl(new NavigationControl());
+
+      map.on("drag", () => {
+        followingMarker = null;
+      });
+
+      map.on("load", () => {
+        console.log("Map loaded");
+
+        map.addSource("delta-move-lines", {
+          type: "geojson",
+          data: {
+            type: "FeatureCollection",
+            features: [],
+          },
+        });
+        map.addLayer({
+          id: "delta-move-lines",
+          type: "line",
+          source: "delta-move-lines",
+          paint: {
+            "line-width": 15,
+            // Use a get expression (https://maplibre.org/maplibre-style-spec/expressions/#get)
+            // to set the line-color to a feature property value.
+            "line-color": ["get", "color"],
+            "line-opacity": 0.5,
+          },
+          layout: {
+            "line-join": "round",
+            "line-cap": "round",
+          },
+        });
+        map.addLayer({
+          id: "arrowId",
+          type: "symbol",
+          source: "delta-move-lines",
+          layout: {
+            "symbol-placement": "line",
+            "symbol-spacing": 1,
+            "icon-allow-overlap": true,
+            "icon-image": "arrow-head",
+            "icon-size": 0.75,
+            visibility: "visible",
+          },
+        });
+      });
+
+      {
+        createArrowHeadImage("#00000055").then((image) => {
+          map.addImage("arrow-head", image);
+        });
+      }
+
+      let followingMarker: MaplibreglMarker | null = null;
+
+      function createMapMarkerElement(vehicle: VehicleV1) {
+        const $container = document.createElement("div");
+
+        const $marker = document.createElement("div");
+        $marker.classList.add("vehicle-marker");
+        if (vehicle.routeId.toString().length > 2) {
+          $marker.style.backgroundColor = "blue";
+        }
+        $marker.dataset.id = vehicle.id.toString();
+        $marker.dataset.routeId = vehicle.routeId.toString();
+        $marker.dataset.tripId = vehicle.tripId;
+        $marker.addEventListener("click", () => {
+          followingMarker = vehicle.mapEntity!;
+          map.flyTo({
+            center: followingMarker.getLngLat(),
+            zoom: 17,
+          });
+        });
+        $container.appendChild($marker);
+
+        const $name = document.createElement("div");
+        $name.classList.add("vehicle-marker-name");
+        $name.textContent = vehicle.routeId.toString();
+        $marker.appendChild($name);
+
+        return $container;
+      }
+
+      function connectWebSocket() {
+        return new Promise<null>((resolve) => {
+          console.log("Connecting to WebSocket", websocketUrl);
+          const ws = new WebSocket(websocketUrl);
+
+          ws.addEventListener("error", (e) => {
+            console.error("WebSocket error", e);
+            ws.close();
+          });
+
+          ws.addEventListener("close", (e) => {
+            console.log("WebSocket closed", e);
+            resolve(null);
+          });
+
+          ws.addEventListener("open", (e) => {
+            console.log("WebSocket opened", e);
+          });
+
+          ws.addEventListener("message", (e) => handleWsMessage(e.data));
+        });
+      }
+
+      function handleWsMessage(eventData: Blob) {
+        console.log("Got data", {
+          len: eventData.size,
+        });
+
+        worker.postMessage({
+          type: "process-message",
+          data: eventData,
+        });
+      }
+
+      worker.addEventListener("message", (e) => {
+        const response = e.data as WorkerResponse;
+        switch (response.type) {
+          case "processed-message":
+            return processMessage(response.data);
+          default:
+            return console.error(
+              "Unknown message type from worker",
+              response.type
+            );
+        }
+      });
+
+      const pins = new Map<unknown, MaplibreglMarker>();
+
+      function processMessage(message: V1Message) {
+        if (typeof message.d === "object" && "vehicles" in message.d) {
+          const locationPairs = [] as {
+            from: [number, number];
+            to: [number, number];
+            color: string;
+          }[];
+          const vehicles = message.d.vehicles.map(VehicleV1.fromSimple);
+
+          // Update existing vehicles and add new ones
+          for (const v of vehicles) {
+            const pin = pins.get(v.id);
+            const vehicle = v.setMapEntity(pin);
+
+            const loc = vehicle.mapEntity?.getLngLat()?.toArray();
+
+            vehicle.updateMapEntity(map, createMapMarkerElement);
+
+            if (loc) {
+              locationPairs.push({
+                from: loc,
+                to: [vehicle.lng, vehicle.lat],
+                color: vehicle.routeId >= 100 ? "#00f" : "#f00",
+              });
+            }
+
+            pins.set(vehicle.id, vehicle.mapEntity!);
+
+            if (vehicle.mapEntity === followingMarker) {
+              map.flyTo({
+                center: vehicle.mapEntity.getLngLat(),
+              });
+            }
+          }
+
+          const ids = vehicles.map((v) => v.id);
+          const idSet = new Set<number>(ids);
+          // Remove vehicles that are no longer in the message
+          for (const [id, pin] of pins.entries()) {
+            if (!idSet.has(id as never)) {
+              pin.remove();
+              pins.delete(id);
+            }
+          }
+
+          // @ts-expect-error
+          map.getSource("delta-move-lines")?.setData({
+            type: "FeatureCollection",
+            features: locationPairs.map((x) => ({
+              type: "Feature",
+              properties: {
+                color: x.color,
+              },
+              geometry: {
+                type: "LineString",
+                coordinates: [x.from, x.to],
+              },
+            })),
+          });
+        }
+      }
+
+      function createArrowHeadImage(color: string) {
+        const arrowHeadSvg = (color: string) => `
+        <svg width="50" height="50" viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+          <path d="M 10,10 L 40,25 L 10,40 Z" fill="${color}" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
+        </svg>
+        `;
+        const arrowHeadSvgBlob = new Blob([arrowHeadSvg(color)], {
+          type: "image/svg+xml",
+        });
+        const arrowHeadImage = new Image(50, 50);
+        arrowHeadImage.src = URL.createObjectURL(arrowHeadSvgBlob);
+
+        return new Promise<HTMLImageElement>((resolve) => {
+          arrowHeadImage.addEventListener("load", () => {
+            resolve(arrowHeadImage);
+          });
+        });
+      }
+
+      while (true) {
+        await connectWebSocket();
+        const sleepFor = 3000 + 10_000 * Math.random();
+        console.log("Sleeping before reconnect", sleepFor);
+        await new Promise((resolve) => setTimeout(resolve, sleepFor));
+      }
+    </script>
+  </body>
+</html>
