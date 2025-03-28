@@ -17,11 +17,10 @@ export default defineConfig({
   },
   env: {
     schema: {
-      WEBSOCKET_URL: envField.string({
+      API_URL: envField.string({
         context: "client",
         access: "public",
-        optional: true,
-        default: "/api/v1/ws",
+        default: "/api",
       }),
       PUBLIC_SITE_URL: envField.string({
         context: "client",

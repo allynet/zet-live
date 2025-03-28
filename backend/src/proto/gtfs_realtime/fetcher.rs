@@ -80,7 +80,7 @@ async fn fetch_and_update_feed(after_timestamp: u64) -> Option<u64> {
 }
 
 #[tracing::instrument(name = "feed_fetcher")]
-pub async fn spawn_feed_fetcher() {
+pub fn spawn_feed_fetcher() {
     debug!("Spawning feed fetcher");
 
     tokio::task::spawn(async {

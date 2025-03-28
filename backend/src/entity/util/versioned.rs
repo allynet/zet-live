@@ -21,6 +21,14 @@ impl<T> Versioned<T> {
         Self::new(version, data).with_timestamp_now()
     }
 
+    pub const fn new_with_timestamp(version: u64, timestamp: u64, data: T) -> Self {
+        Self {
+            version,
+            timestamp: Some(timestamp),
+            data,
+        }
+    }
+
     pub fn with_timestamp(self, timestamp: u64) -> Self {
         Self {
             version: self.version,

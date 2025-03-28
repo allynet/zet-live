@@ -4,13 +4,24 @@ use listenfd::ListenFd;
 use tokio::net::TcpListener;
 use tracing::{debug, error, info};
 
+mod request;
 mod routes;
 
-use crate::{cli::ServerConfig, proto::gtfs_realtime::fetcher::spawn_feed_fetcher};
+use crate::{
+    cli::ServerConfig,
+    proto::{
+        gtfs_realtime::fetcher::spawn_feed_fetcher,
+        gtfs_schedule::fetcher::{spawn_schedule_fetcher, wait_for_schedule_update},
+    },
+};
 
 pub async fn run(server_config: &ServerConfig) {
     debug!("Starting server");
-    spawn_feed_fetcher().await;
+    spawn_feed_fetcher();
+    spawn_schedule_fetcher();
+
+    info!("Waiting for schedule info");
+    wait_for_schedule_update().await;
 
     let app = routes::create_router();
 

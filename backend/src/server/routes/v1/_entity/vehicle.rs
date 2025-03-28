@@ -5,8 +5,8 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Vehicle {
-    pub id: u32,
-    pub route_id: u32,
+    pub id: String,
+    pub route_id: String,
     pub trip_id: String,
     pub latitude: f32,
     pub longitude: f32,
@@ -15,8 +15,8 @@ pub struct Vehicle {
 impl Vehicle {
     pub fn to_simple(&self) -> Vec<MixedValue> {
         vec![
-            self.id.into(),
-            self.route_id.into(),
+            self.id.clone().into(),
+            self.route_id.clone().into(),
             self.trip_id.clone().into(),
             self.latitude.into(),
             self.longitude.into(),
@@ -48,23 +48,9 @@ impl TryFrom<&VehiclePosition> for Vehicle {
             return Err(VehicleError::MissingPositionInfo);
         };
 
-        let route_id = match trip_info.route_id().parse() {
-            Ok(x) => x,
-            Err(e) => {
-                return Err(VehicleError::InvalidRouteId(e));
-            }
-        };
-
-        let id = match vehicle_info.id().parse() {
-            Ok(x) => x,
-            Err(e) => {
-                return Err(VehicleError::InvalidId(e));
-            }
-        };
-
         Ok(Self {
-            id,
-            route_id,
+            id: vehicle_info.id().to_string(),
+            route_id: trip_info.route_id().to_string(),
             trip_id: trip_info.trip_id().to_string(),
             latitude: position_info.latitude,
             longitude: position_info.longitude,
@@ -73,6 +59,7 @@ impl TryFrom<&VehiclePosition> for Vehicle {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[allow(clippy::enum_variant_names)]
 pub enum VehicleError {
     #[error("Missing vehicle info")]
     MissingVehicleInfo,
@@ -82,10 +69,4 @@ pub enum VehicleError {
 
     #[error("Missing position info")]
     MissingPositionInfo,
-
-    #[error("Invalid route id: {0}")]
-    InvalidRouteId(std::num::ParseIntError),
-
-    #[error("Invalid id: {0}")]
-    InvalidId(std::num::ParseIntError),
 }

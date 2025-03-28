@@ -46,13 +46,23 @@ import BaseHead from "../components/BaseHead.astro";
         Marker as MaplibreglMarker,
         NavigationControl,
       } from "maplibre-gl";
-      import type { V1Message } from "../app/v1/entity/message";
-      import { VehicleV1 } from "../app/v1/entity/vehicle";
+      import type { V1Message } from "../app/entity/v1/message";
+      import { VehicleV1 } from "../app/entity/v1/vehicle";
       import WorkerScript from "../scripts/worker.ts?worker";
       import type { WorkerResponse } from "../scripts/worker";
-      import { WEBSOCKET_URL } from "astro:env/client";
+      import { API_URL } from "astro:env/client";
 
-      const websocketUrl = WEBSOCKET_URL || "/api/v1/ws";
+      const apiUrl = API_URL || "/api";
+
+      const websocketUrl = (() => {
+        const url = new URL(`${apiUrl}/v1/ws`, window.location.href);
+        if (url.protocol === "https:") {
+          url.protocol = "wss:";
+        } else {
+          url.protocol = "ws:";
+        }
+        return url.toString();
+      })();
 
       const worker = new WorkerScript();
 
@@ -86,6 +96,7 @@ import BaseHead from "../components/BaseHead.astro";
 
       map.on("drag", () => {
         followingMarker = null;
+        resetCurrentlyFollowingRoute();
       });
 
       map.on("load", () => {
@@ -127,6 +138,45 @@ import BaseHead from "../components/BaseHead.astro";
             visibility: "visible",
           },
         });
+
+        map.addSource("current-following-route", {
+          type: "geojson",
+          data: {
+            type: "FeatureCollection",
+            features: [],
+          },
+        });
+
+        map.addLayer({
+          id: "current-following-route",
+          type: "line",
+          source: "current-following-route",
+          paint: {
+            "line-width": 5,
+            // Use a get expression (https://maplibre.org/maplibre-style-spec/expressions/#get)
+            // to set the line-color to a feature property value.
+            "line-color": ["get", "color"],
+            "line-opacity": 0.5,
+          },
+          layout: {
+            "line-join": "round",
+            "line-cap": "round",
+          },
+        });
+
+        map.addLayer({
+          id: "current-following-route-arrow",
+          type: "symbol",
+          source: "current-following-route",
+          layout: {
+            "symbol-placement": "line",
+            "symbol-spacing": 1,
+            "icon-allow-overlap": true,
+            "icon-image": "arrow-head",
+            "icon-size": 0.25,
+            visibility: "visible",
+          },
+        });
       });
 
       {
@@ -150,6 +200,7 @@ import BaseHead from "../components/BaseHead.astro";
         $marker.dataset.tripId = vehicle.tripId;
         $marker.addEventListener("click", () => {
           followingMarker = vehicle.mapEntity!;
+          void createCurrentFollowingRouteSource(vehicle.tripId);
           map.flyTo({
             center: followingMarker.getLngLat(),
             zoom: 17,
@@ -236,7 +287,7 @@ import BaseHead from "../components/BaseHead.astro";
               locationPairs.push({
                 from: loc,
                 to: [vehicle.lng, vehicle.lat],
-                color: vehicle.routeId >= 100 ? "#00f" : "#f00",
+                color: Number(vehicle.routeId) >= 100 ? "#00f" : "#f00",
               });
             }
 
@@ -250,7 +301,7 @@ import BaseHead from "../components/BaseHead.astro";
           }
 
           const ids = vehicles.map((v) => v.id);
-          const idSet = new Set<number>(ids);
+          const idSet = new Set(ids);
           // Remove vehicles that are no longer in the message
           for (const [id, pin] of pins.entries()) {
             if (!idSet.has(id as never)) {
@@ -292,6 +343,57 @@ import BaseHead from "../components/BaseHead.astro";
           arrowHeadImage.addEventListener("load", () => {
             resolve(arrowHeadImage);
           });
+        });
+      }
+
+      async function createCurrentFollowingRouteSource(tripId: string) {
+        const shape = (await fetch(
+          `${apiUrl}/v1/schedule/shapes/for-trip/${tripId}`
+        )
+          .then((x) => x.json())
+          .catch(() => null)) as { d: [number, number][] } | null;
+
+        if (!shape) {
+          console.error("Shape not found for trip", tripId);
+          return false;
+        }
+
+        // @ts-expect-error
+        map.getSource("current-following-route")?.setData({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              properties: {
+                color: "#f0f",
+              },
+              geometry: {
+                type: "LineString",
+                coordinates: shape.d,
+              },
+            },
+          ],
+        });
+
+        return true;
+      }
+
+      function resetCurrentlyFollowingRoute() {
+        // @ts-expect-error
+        map.getSource("current-following-route")?.setData({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              properties: {
+                color: "#f0f",
+              },
+              geometry: {
+                type: "LineString",
+                coordinates: [],
+              },
+            },
+          ],
         });
       }
 

@@ -3,16 +3,16 @@ import { Map as MaplibreglMap, Marker as MaplibreglMarker } from "maplibre-gl";
 export class VehicleV1<
   TMapEntity extends MaplibreglMarker | undefined = MaplibreglMarker | undefined
 > {
-  id: number;
-  routeId: number;
+  id: string;
+  routeId: string;
   tripId: string;
   lat: number;
   lng: number;
   mapEntity = undefined as TMapEntity;
 
   public constructor(data: {
-    id: number;
-    routeId: number;
+    id: string;
+    routeId: string;
     tripId: string;
     latitude: number;
     longitude: number;
@@ -30,8 +30,8 @@ export class VehicleV1<
     }
 
     return new VehicleV1({
-      id: Number(data[0]),
-      routeId: Number(data[1]),
+      id: String(data[0]),
+      routeId: String(data[1]),
       tripId: String(data[2]),
       latitude: Number(data[3]),
       longitude: Number(data[4]),

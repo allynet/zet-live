@@ -1,12 +1,12 @@
 use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
 
 use axum::{
-    Json,
     body::Bytes,
     extract::{
         State, WebSocketUpgrade,
         ws::{Message, WebSocket},
     },
+    http::HeaderMap,
     response::IntoResponse,
 };
 use axum_client_ip::{InsecureClientIp, SecureClientIp};
@@ -18,15 +18,15 @@ use tokio::{
 };
 use tracing::{debug, trace, warn};
 
-use crate::server::routes::v1::Transmission;
+use crate::server::{request::JsonOrAccept, routes::v1::Transmission};
 
 use super::V1AppState;
 
 pub static WS_CONNECTIONS: Lazy<Arc<RwLock<HashMap<IpAddr, u32>>>> =
     Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
 
-pub async fn get_ws_connections() -> impl IntoResponse {
-    Json(WS_CONNECTIONS.read().await.clone())
+pub async fn get_ws_connections(headers: HeaderMap) -> impl IntoResponse {
+    JsonOrAccept(WS_CONNECTIONS.read().await.clone(), headers).into_response()
 }
 
 pub async fn websocket_handler(

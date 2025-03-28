@@ -10,10 +10,11 @@ use crate::{
     proto::gtfs_realtime::fetcher::wait_for_feed_update,
 };
 
-pub mod _entity;
-pub mod feed;
-pub mod vehicles;
-pub mod ws;
+mod _entity;
+mod feed;
+mod schedule;
+mod vehicles;
+mod ws;
 
 pub fn create_v1_router() -> Router {
     let app_state = Arc::new(V1AppState::new());
@@ -24,6 +25,18 @@ pub fn create_v1_router() -> Router {
         .route("/feed", get(feed::get_feed))
         .route("/ws", get(ws::websocket_handler))
         .route("/ws/connections", get(ws::get_ws_connections))
+        .route("/schedule/routes", get(schedule::get_routes))
+        .route("/schedule/routes/{id}", get(schedule::get_route))
+        .route("/schedule/stops", get(schedule::get_stops))
+        .route("/schedule/stops/{id}", get(schedule::get_stop))
+        .route("/schedule/trips", get(schedule::get_trips))
+        .route("/schedule/trips/{id}", get(schedule::get_trip))
+        .route("/schedule/shapes", get(schedule::get_shapes))
+        .route("/schedule/shapes/{id}", get(schedule::get_shape))
+        .route(
+            "/schedule/shapes/for-trip/{id}",
+            get(schedule::get_shape_for_trip),
+        )
         .with_state(app_state)
 }
 

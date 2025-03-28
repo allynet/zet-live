@@ -1,13 +1,13 @@
-use axum::{Json, debug_handler};
+use axum::{debug_handler, http::HeaderMap, response::IntoResponse};
 
-use crate::proto::gtfs_realtime::fetcher::get_cached_feed;
+use crate::{proto::gtfs_realtime::fetcher::get_cached_feed, server::request::JsonOrAccept};
 
 use super::_entity::vehicle::Vehicle;
 
 #[debug_handler]
-pub async fn get_all() -> Json<Vec<Vehicle>> {
+pub async fn get_all(headers: HeaderMap) -> impl IntoResponse {
     let Some(feed) = get_cached_feed().await else {
-        return Json(vec![]);
+        return JsonOrAccept::<Vec<Vehicle>>(vec![], headers).into_response();
     };
 
     let vehicles = feed
@@ -17,5 +17,5 @@ pub async fn get_all() -> Json<Vec<Vehicle>> {
         .filter_map(|x| Vehicle::try_from(x).ok())
         .collect::<Vec<_>>();
 
-    Json(vehicles)
+    JsonOrAccept(vehicles, headers).into_response()
 }

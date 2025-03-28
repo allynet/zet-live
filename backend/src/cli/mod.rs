@@ -58,6 +58,8 @@ pub struct GlobalConfig {
 pub struct DataFetcherConfig {
     /// The endpoint to fetch the data from.
     /// Must be a valid URL to a GTFS Realtime endpoint.
+    ///
+    /// @see <https://gtfs.org/documentation/realtime/reference/>
     #[clap(
         long,
         default_value = "https://www.zet.hr/gtfs-rt-protobuf",
@@ -75,10 +77,37 @@ pub struct DataFetcherConfig {
     #[clap(
         long,
         value_parser = Timeframe::parse_str,
-        default_value = "2s",
+        default_value = "2 seconds",
         env = "ZI_DATA_FETCH_INTERVAL"
     )]
     pub data_fetch_interval: Timeframe,
+
+    /// The endpoint to fetch the schedule from.
+    ///
+    /// Should be a link to a zip file containing CSV files with schedule data about the GTFS feed.
+    ///
+    /// @see <https://gtfs.org/documentation/schedule/reference/>
+    #[clap(
+        long,
+        default_value = "https://www.zet.hr/gtfs-scheduled/latest",
+        env = "ZI_SCHEDULE_FETCH_ENDPOINT"
+    )]
+    pub schedule_fetch_endpoint: url::Url,
+
+    /// The interval at which the data is fetched/checked from the endpoint.
+    /// Depends on the endpoint, but for the ZET GTFS-RT endpoint, it's updated about every 10 seconds.
+    ///
+    /// The value represents a duration in seconds, minutes, hours, days, weeks, or months.
+    /// Special events are ignored, eg. leap years, daylight savings, etc.
+    /// `minute` is 60 seconds, `hour` is 60 minutes, `day` is 24 hours, `week` is 7 days, `month` is 30 days.
+    /// Eg. 1d, 2 weeks, 3 months, 4h, 5mins, 6s
+    #[clap(
+        long,
+        value_parser = Timeframe::parse_str,
+        default_value = "1 hour",
+        env = "ZI_SCHEDULE_FETCH_INTERVAL"
+    )]
+    pub schedule_fetch_interval: Timeframe,
 }
 
 #[derive(Debug, clap::Subcommand)]

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { v1MessageSchema, type V1Message } from "../app/v1/entity/message";
+import { v1MessageSchema, type V1Message } from "../app/entity/v1/message";
 import { decode as decodeCbor } from "cbor2";
 
 const messageValidator = z.object({
