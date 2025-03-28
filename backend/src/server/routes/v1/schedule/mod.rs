@@ -2,8 +2,9 @@ use axum::{extract::Path, http::HeaderMap, response::IntoResponse};
 use reqwest::StatusCode;
 
 use crate::{
-    entity::util::versioned::Versioned, proto::gtfs_schedule::data::shape::SimpleShape,
-    proto::gtfs_schedule::fetcher::get_cached_schedule, server::request::JsonOrAccept,
+    entity::util::versioned::Versioned,
+    proto::gtfs_schedule::{data::shape::SimpleShape, fetcher::get_cached_schedule},
+    server::request::JsonOrAccept,
 };
 
 pub async fn get_routes(headers: HeaderMap) -> impl IntoResponse {

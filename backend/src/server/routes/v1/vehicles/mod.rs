@@ -1,8 +1,7 @@
 use axum::{debug_handler, http::HeaderMap, response::IntoResponse};
 
-use crate::{proto::gtfs_realtime::fetcher::get_cached_feed, server::request::JsonOrAccept};
-
 use super::_entity::vehicle::Vehicle;
+use crate::{proto::gtfs_realtime::fetcher::get_cached_feed, server::request::JsonOrAccept};
 
 #[debug_handler]
 pub async fn get_all(headers: HeaderMap) -> impl IntoResponse {

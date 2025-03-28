@@ -5,9 +5,8 @@ use prost::Message;
 use tokio::sync::{Notify, RwLock};
 use tracing::{debug, trace, warn};
 
-use crate::cli::Config;
-
 use super::data::transit_realtime::FeedMessage;
+use crate::cli::Config;
 
 static FEED: Lazy<RwLock<Option<Arc<FeedMessage>>>> = Lazy::new(|| RwLock::new(None));
 static FEED_NOTIFICATION: Lazy<Arc<Notify>> = Lazy::new(|| Arc::new(Notify::new()));

@@ -18,9 +18,8 @@ use tokio::{
 };
 use tracing::{debug, trace, warn};
 
-use crate::server::{request::JsonOrAccept, routes::v1::Transmission};
-
 use super::V1AppState;
+use crate::server::{request::JsonOrAccept, routes::v1::Transmission};
 
 pub static WS_CONNECTIONS: Lazy<Arc<RwLock<HashMap<IpAddr, u32>>>> =
     Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
