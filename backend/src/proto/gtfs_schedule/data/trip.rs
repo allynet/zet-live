@@ -6,21 +6,30 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use super::{FileData, WheelchairBoarding};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Trip {
-    #[serde(rename = "trip_id")]
+    #[serde(alias = "trip_id")]
     pub id: String,
+    #[serde(alias = "route_id")]
     pub route_id: u32,
+    #[serde(alias = "service_id")]
     pub service_id: String,
-    #[serde(rename = "trip_headsign")]
+    #[serde(alias = "trip_headsign")]
     pub headsign: Option<String>,
-    #[serde(rename = "trip_short_name")]
+    #[serde(alias = "trip_short_name")]
     pub short_name: Option<String>,
+    #[serde(alias = "direction_id")]
     pub direction_id: Option<Direction>,
+    #[serde(alias = "block_id")]
     pub block_id: Option<String>,
+    #[serde(alias = "shape_id")]
     pub shape_id: Option<String>,
-    #[serde(rename = "wheelchair_accessible")]
-    pub wheelchair_boarding: Option<WheelchairBoarding>,
-    pub bikes_allowed: Option<BikesAllowed>,
+    #[serde(default)]
+    #[serde(alias = "wheelchair_accessible")]
+    pub wheelchair_boarding: WheelchairBoarding,
+    #[serde(default)]
+    #[serde(alias = "bikes_allowed")]
+    pub bikes_allowed: BikesAllowed,
 }
 
 impl FileData for Trip {
@@ -36,9 +45,10 @@ pub enum Direction {
     Inbound = 1,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
 #[repr(u8)]
 pub enum BikesAllowed {
+    #[default]
     Unknown = 0,
     Allowed = 1,
     NotAllowed = 2,

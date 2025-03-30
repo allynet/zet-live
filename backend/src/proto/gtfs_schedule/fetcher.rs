@@ -65,7 +65,7 @@ pub enum FetcherError {
 }
 
 async fn fetch_and_update_schedule() -> Result<(), FetcherError> {
-    let schedule = fetch_newer_metadata().await?;
+    let schedule = fetch_newer_schedule().await?;
     if let Some(schedule) = schedule {
         GTFS_SCHEDULE.write().await.replace(Arc::new(schedule));
         DATA_NOTIFICATION.notify_waiters();
@@ -73,7 +73,7 @@ async fn fetch_and_update_schedule() -> Result<(), FetcherError> {
     Ok(())
 }
 
-async fn fetch_newer_metadata() -> Result<Option<GtfsSchedule>, FetcherError> {
+async fn fetch_newer_schedule() -> Result<Option<GtfsSchedule>, FetcherError> {
     let url = Config::global()
         .global
         .data_fetcher
@@ -131,6 +131,8 @@ async fn fetch_newer_metadata() -> Result<Option<GtfsSchedule>, FetcherError> {
     }
 
     let zip_body = response.bytes().await.map_err(FetcherError::Fetch)?;
+
+    trace!(len = ?zip_body.len(), "Got zip body");
 
     let schedule = GtfsSchedule::read_from_zip_bytes(zip_body)
         .await

@@ -17,6 +17,17 @@ import BaseHead from "../components/BaseHead.astro";
       }
     </style>
     <style is:global>
+      .not-following {
+        z-index: 0;
+      }
+      .not-following .vehicle-marker {
+        opacity: 0.25;
+      }
+
+      .following {
+        z-index: 500;
+      }
+
       .vehicle-marker {
         display: flex;
         aspect-ratio: 1;
@@ -24,6 +35,7 @@ import BaseHead from "../components/BaseHead.astro";
         justify-content: center;
         background-color: red;
         border-radius: 0.5em;
+        transition: opacity 0.25s ease;
       }
 
       .vehicle-marker-name {
@@ -32,7 +44,7 @@ import BaseHead from "../components/BaseHead.astro";
         padding: 0.5rem;
         font-weight: bold;
         font-family: sans-serif;
-        font-size: 1.2rem;
+        font-size: 1rem;
         color: white;
       }
     </style>
@@ -53,6 +65,8 @@ import BaseHead from "../components/BaseHead.astro";
       import { API_URL } from "astro:env/client";
 
       const apiUrl = API_URL || "/api";
+
+      let MARKER_ID = 1;
 
       const websocketUrl = (() => {
         const url = new URL(`${apiUrl}/v1/ws`, window.location.href);
@@ -94,9 +108,12 @@ import BaseHead from "../components/BaseHead.astro";
       });
       map.addControl(new NavigationControl());
 
-      map.on("drag", () => {
-        followingMarker = null;
-        resetCurrentlyFollowingRoute();
+      map.on("click", (e) => {
+        const clickedOnMapCanvas = e.originalEvent.target === map.getCanvas();
+
+        if (clickedOnMapCanvas) {
+          clearFollowingMarker();
+        }
       });
 
       map.on("load", () => {
@@ -126,7 +143,7 @@ import BaseHead from "../components/BaseHead.astro";
           },
         });
         map.addLayer({
-          id: "arrowId",
+          id: "delta-move-lines-arrow",
           type: "symbol",
           source: "delta-move-lines",
           layout: {
@@ -187,23 +204,69 @@ import BaseHead from "../components/BaseHead.astro";
 
       let followingMarker: MaplibreglMarker | null = null;
 
+      async function setFollowingMarker(data: {
+        marker: MaplibreglMarker;
+        tripId?: string;
+      }) {
+        followingMarker = data.marker;
+        const $followingMarker = followingMarker.getElement();
+
+        map.flyTo({
+          center: data.marker.getLngLat(),
+        });
+
+        map.setLayerZoomRange("delta-move-lines", 24, 24);
+        map.setLayerZoomRange("delta-move-lines-arrow", 24, 24);
+
+        for (const marker of pins.values()) {
+          const $marker = marker.getElement();
+
+          if ($marker.id === $followingMarker.id) {
+            $marker.classList.remove("not-following");
+            $marker.classList.add("following");
+            continue;
+          }
+
+          $marker.classList.add("not-following");
+          $marker.classList.remove("following");
+        }
+
+        const tripId = data.tripId || $followingMarker.dataset.tripId;
+
+        if (tripId) {
+          await createCurrentFollowingRouteSource(tripId);
+        }
+      }
+
+      function clearFollowingMarker() {
+        followingMarker = null;
+        resetCurrentlyFollowingRoute();
+
+        map.setLayerZoomRange("delta-move-lines", 0, 24);
+        map.setLayerZoomRange("delta-move-lines-arrow", 0, 24);
+
+        for (const marker of pins.values()) {
+          marker.getElement().classList.remove("not-following");
+          marker.getElement().classList.remove("following");
+        }
+      }
+
       function createMapMarkerElement(vehicle: VehicleV1) {
         const $container = document.createElement("div");
+        $container.id = `vehicle-marker-${MARKER_ID++}`;
+        $container.dataset.id = vehicle.id.toString();
+        $container.dataset.routeId = vehicle.routeId.toString();
+        $container.dataset.tripId = vehicle.tripId;
 
         const $marker = document.createElement("div");
         $marker.classList.add("vehicle-marker");
         if (vehicle.routeId.toString().length > 2) {
           $marker.style.backgroundColor = "blue";
         }
-        $marker.dataset.id = vehicle.id.toString();
-        $marker.dataset.routeId = vehicle.routeId.toString();
-        $marker.dataset.tripId = vehicle.tripId;
         $marker.addEventListener("click", () => {
-          followingMarker = vehicle.mapEntity!;
-          void createCurrentFollowingRouteSource(vehicle.tripId);
-          map.flyTo({
-            center: followingMarker.getLngLat(),
-            zoom: 17,
+          void setFollowingMarker({
+            marker: vehicle.mapEntity!,
+            tripId: vehicle.tripId,
           });
         });
         $container.appendChild($marker);
@@ -294,9 +357,7 @@ import BaseHead from "../components/BaseHead.astro";
             pins.set(vehicle.id, vehicle.mapEntity!);
 
             if (vehicle.mapEntity === followingMarker) {
-              map.flyTo({
-                center: vehicle.mapEntity.getLngLat(),
-              });
+              void createCurrentFollowingRouteSource(vehicle.tripId);
             }
           }
 

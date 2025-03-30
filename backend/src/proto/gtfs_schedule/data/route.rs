@@ -6,6 +6,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use super::FileData;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Route {
     #[serde(alias = "route_id")]
     pub id: u32,
@@ -22,15 +23,20 @@ pub struct Route {
     #[serde(alias = "route_url")]
     pub url: Option<url::Url>,
     #[serde(default = "default_route_color")]
+    #[serde(alias = "color")]
     pub color: String,
     #[serde(default = "default_route_text_color")]
+    #[serde(alias = "text_color")]
     pub text_color: String,
     #[serde(alias = "route_sort_order")]
     pub sort_order: Option<u32>,
     #[serde(default)]
+    #[serde(alias = "continuous_pickup")]
     pub continuous_pickup: ContinuousPickup,
     #[serde(default)]
+    #[serde(alias = "continuous_drop_off")]
     pub continuous_drop_off: ContinuousDropOff,
+    #[serde(alias = "network_id")]
     pub network_id: Option<String>,
 }
 

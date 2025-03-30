@@ -5,16 +5,17 @@ use serde::{Deserialize, Serialize};
 use super::FileData;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Shape {
-    #[serde(rename = "shape_id")]
+    #[serde(alias = "shape_id")]
     pub id: String,
-    #[serde(rename = "shape_pt_lat")]
+    #[serde(alias = "shape_pt_lat")]
     pub latitude: f64,
-    #[serde(rename = "shape_pt_lon")]
+    #[serde(alias = "shape_pt_lon")]
     pub longitude: f64,
-    #[serde(rename = "shape_pt_sequence")]
+    #[serde(alias = "shape_pt_sequence")]
     pub sequence: u32,
-    #[serde(rename = "shape_dist_traveled")]
+    #[serde(alias = "shape_dist_traveled")]
     pub distance: Option<f64>,
 }
 
@@ -25,6 +26,7 @@ impl FileData for Shape {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SimpleShape {
     pub latitude: f64,
     pub longitude: f64,
