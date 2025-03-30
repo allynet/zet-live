@@ -16,9 +16,9 @@ use tokio::{
     sync::{Mutex, RwLock},
     time,
 };
-use tracing::{debug, trace, warn};
+use tracing::{debug, error, trace, warn};
 
-use super::V1AppState;
+use super::{INITIAL_STATE, V1AppState};
 use crate::server::{request::JsonOrAccept, routes::v1::Transmission};
 
 pub static WS_CONNECTIONS: Lazy<Arc<RwLock<HashMap<IpAddr, u32>>>> =
@@ -55,6 +55,11 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
         .or_insert(1);
     let (sender, _receiver) = stream.split();
     let sender = Arc::new(Mutex::new(sender));
+
+    if let Err(e) = send_initial_state(sender.clone()).await {
+        error!(?e, "Error sending initial state");
+        return;
+    }
 
     // ping the client every 30ish seconds
     let mut ping_handle = {
@@ -135,4 +140,42 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
         }
     }
     debug!(?addr, "Websocket closed");
+}
+
+async fn send_initial_state(
+    sender: Arc<Mutex<futures::stream::SplitSink<WebSocket, Message>>>,
+) -> Result<(), axum::Error> {
+    let initial_state = INITIAL_STATE.read().await;
+    let vehicles = async {
+        let vehicles = initial_state.vehicles.clone();
+
+        sender
+            .lock()
+            .await
+            .send(Message::Binary(Bytes::from(vehicles)))
+            .await
+    };
+    let active_stops = async {
+        let active_stops = initial_state.active_stops.clone();
+
+        sender
+            .lock()
+            .await
+            .send(Message::Binary(Bytes::from(active_stops)))
+            .await
+    };
+
+    let (vehicles, active_stops) = tokio::join!(vehicles, active_stops);
+
+    if let Err(e) = vehicles {
+        error!(?e, "Error sending initial vehicles");
+        return Err(e);
+    }
+
+    if let Err(e) = active_stops {
+        error!(?e, "Error sending initial active stops");
+        return Err(e);
+    }
+
+    Ok(())
 }

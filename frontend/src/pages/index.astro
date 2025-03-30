@@ -78,6 +78,7 @@ import BaseHead from "../components/BaseHead.astro";
         lng: number;
         ids: string[];
       }[];
+      let activeStopIds = new Set<string>();
 
       const websocketUrl = (() => {
         const url = new URL(`${apiUrl}/v1/ws`, window.location.href);
@@ -177,8 +178,8 @@ import BaseHead from "../components/BaseHead.astro";
           $marker.classList.remove("following");
         }
 
-        map.setLayerZoomRange("delta-move-lines", 24, 24);
-        map.setLayerZoomRange("delta-move-lines-arrow", 24, 24);
+        // map.setLayerZoomRange("delta-move-lines", 24, 24);
+        // map.setLayerZoomRange("delta-move-lines-arrow", 24, 24);
 
         const displayedStops = stopIds
           .map((id) => simpleStops[id])
@@ -235,7 +236,7 @@ import BaseHead from "../components/BaseHead.astro";
           type: "line",
           source: "delta-move-lines",
           paint: {
-            "line-width": 15,
+            "line-width": 5,
             // Use a get expression (https://maplibre.org/maplibre-style-spec/expressions/#get)
             // to set the line-color to a feature property value.
             "line-color": ["get", "color"],
@@ -252,10 +253,11 @@ import BaseHead from "../components/BaseHead.astro";
           source: "delta-move-lines",
           layout: {
             "symbol-placement": "line",
+            "symbol-avoid-edges": false,
             "symbol-spacing": 1,
-            "icon-allow-overlap": true,
             "icon-image": "arrow-head",
-            "icon-size": 0.75,
+            "text-ignore-placement": true,
+            "icon-size": 0.25,
             visibility: "visible",
           },
         });
@@ -322,7 +324,7 @@ import BaseHead from "../components/BaseHead.astro";
       });
 
       {
-        createArrowHeadImage("#00000055").then((image) => {
+        createArrowHeadImage("#00000077").then((image) => {
           map.addImage("arrow-head", image);
         });
       }
@@ -508,88 +510,104 @@ import BaseHead from "../components/BaseHead.astro";
           });
         }
 
+        if (typeof message.d === "object" && "activeStops" in message.d) {
+          const newActiveStopIds = new Set(message.d.activeStops);
+          if (newActiveStopIds.difference(activeStopIds).size > 0) {
+            activeStopIds = newActiveStopIds;
+            computeAndUpdateGroupedStops();
+          }
+        }
+
         if (typeof message.d === "object" && "simpleStops" in message.d) {
           const stops = message.d.simpleStops.map(StopV1.fromSimple);
-          const areaOf = (stops: StopV1[]) => {
-            const lats = stops.map((s) => s.lat);
-            const lngs = stops.map((s) => s.lng);
-
-            const minLat = Math.min(...lats);
-            const maxLat = Math.max(...lats);
-            const minLng = Math.min(...lngs);
-            const maxLng = Math.max(...lngs);
-
-            return (maxLat - minLat) * (maxLng - minLng);
-          };
-
           console.log("Updating stops");
 
           simpleStops = Object.fromEntries(
             stops.map((stop) => [stop.id, stop])
           );
 
-          const startThing = window.performance.now();
-          type StopsByName = Record<string, StopV1[]>;
-          const stopsByName = Object.values(simpleStops).reduce((acc, a) => {
-            if (!acc[a.name]) {
-              acc[a.name] = [];
-            }
-            acc[a.name].push(a);
-            return acc;
-          }, {} as StopsByName);
+          computeAndUpdateGroupedStops();
+        }
+      }
 
-          requestIdleCallback(() => {
-            const stopsByDistance = Object.entries(stopsByName).reduce(
-              (acc, [name, stops]) => {
-                const stopsGrouped = [] as {
-                  stops: StopV1[];
-                }[];
+      function computeAndUpdateGroupedStops() {
+        function areaOf(stops: StopV1[]) {
+          const lats = stops.map((s) => s.lat);
+          const lngs = stops.map((s) => s.lng);
 
-                for (const stop of stops) {
-                  const closeEnoughStop = stopsGrouped.find(
-                    (x) => areaOf([stop, ...x.stops]) < 1e-7
-                  );
+          const minLat = Math.min(...lats);
+          const maxLat = Math.max(...lats);
+          const minLng = Math.min(...lngs);
+          const maxLng = Math.max(...lngs);
 
-                  if (closeEnoughStop) {
-                    closeEnoughStop.stops.push(stop);
-                    continue;
-                  }
+          return (maxLat - minLat) * (maxLng - minLng);
+        }
 
-                  stopsGrouped.push({
-                    stops: [stop],
-                  });
+        const startThing = window.performance.now();
+        type StopsByName = Record<string, StopV1[]>;
+        const stopsByName = Object.values(simpleStops).reduce((acc, a) => {
+          if (!acc[a.name]) {
+            acc[a.name] = [];
+          }
+          acc[a.name].push(a);
+          return acc;
+        }, {} as StopsByName);
+
+        requestIdleCallback(() => {
+          const stopsByDistance = Object.entries(stopsByName).reduce(
+            (acc, [name, stops]) => {
+              const stopsGrouped = [] as {
+                stops: StopV1[];
+              }[];
+
+              for (const stop of stops) {
+                if (activeStopIds.size > 0 && !activeStopIds.has(stop.id)) {
+                  continue;
                 }
 
-                acc[name] = stopsGrouped;
+                const closeEnoughStop = stopsGrouped.find(
+                  (x) => areaOf([stop, ...x.stops]) < 1e-7
+                );
 
-                return acc;
-              },
-              {} as Record<string, { stops: StopV1[] }[]>
-            );
-            console.log(stopsByDistance);
-            requestIdleCallback(() => {
-              stopsGrouped = Object.values(stopsByDistance)
-                .flatMap((x) => x.map((y) => y.stops))
-                .map((a) => {
-                  const name = a[0]!.name;
-                  const avgLat =
-                    a.reduce((acc, stop) => acc + stop.lat, 0) / a.length;
-                  const avgLng =
-                    a.reduce((acc, stop) => acc + stop.lng, 0) / a.length;
-                  const ids = a.map((stop) => stop.id);
-                  return { name, lat: avgLat, lng: avgLng, ids };
+                if (closeEnoughStop) {
+                  closeEnoughStop.stops.push(stop);
+                  continue;
+                }
+
+                stopsGrouped.push({
+                  stops: [stop],
                 });
+              }
 
-              setDisplayedStops(stopsGrouped);
+              acc[name] = stopsGrouped;
 
-              console.log(
-                "Stops by distance calculated in",
-                window.performance.now() - startThing,
-                "ms"
-              );
-            });
+              return acc;
+            },
+            {} as Record<string, { stops: StopV1[] }[]>
+          );
+
+          requestIdleCallback(() => {
+            stopsGrouped = Object.values(stopsByDistance)
+              .flatMap((x) => x.map((y) => y.stops))
+              .map((a) => {
+                const name = a[0]!.name;
+                const avgLat =
+                  a.reduce((acc, stop) => acc + stop.lat, 0) / a.length;
+                const avgLng =
+                  a.reduce((acc, stop) => acc + stop.lng, 0) / a.length;
+                const ids = a.map((stop) => stop.id);
+                return { name, lat: avgLat, lng: avgLng, ids };
+              });
+
+            setDisplayedStops(stopsGrouped);
+
+            console.log(
+              "Stops by distance calculated in",
+              window.performance.now() - startThing,
+              "ms"
+            );
           });
-        }
+        });
       }
 
       function createArrowHeadImage(color: string) {

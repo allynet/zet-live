@@ -1,13 +1,20 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc, time::Instant};
 
 use _entity::vehicle::Vehicle;
 use axum::{Router, routing::get};
-use tokio::sync::watch;
+use once_cell::sync::Lazy;
+use tokio::sync::{RwLock, watch};
 use tracing::{error, trace};
 
 use crate::{
     entity::util::{mixed_value::MixedValue, versioned::Versioned},
-    proto::gtfs_realtime::fetcher::wait_for_feed_update,
+    proto::{
+        gtfs_realtime::{
+            data::transit_realtime::FeedMessage,
+            fetcher::{get_cached_feed, wait_for_feed_update},
+        },
+        gtfs_schedule::fetcher::get_cached_schedule,
+    },
 };
 
 mod _entity;
@@ -46,14 +53,99 @@ pub fn create_v1_router() -> Router {
         .with_state(app_state)
 }
 
+pub struct InitialState {
+    vehicles: Vec<u8>,
+    active_stops: Vec<u8>,
+}
+pub static INITIAL_STATE: Lazy<RwLock<InitialState>> = Lazy::new(|| {
+    RwLock::new(InitialState {
+        vehicles: Vec::new(),
+        active_stops: Vec::new(),
+    })
+});
+
 async fn feed_listener(app_state: Arc<V1AppState>) {
+    if let Some(feed) = get_cached_feed().await {
+        process_feed(app_state.clone(), feed).await;
+    }
     loop {
         let feed = wait_for_feed_update().await;
         trace!(?feed.header, "Got feed update on v1 router");
+        process_feed(app_state.clone(), feed).await;
+    }
+}
 
-        let vehicles_feed = feed.clone();
+async fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
+    let schedule = get_cached_schedule().await;
+
+    let active_stops_feed = feed.clone();
+    let active_stops_app_state = app_state.clone();
+    tokio::task::spawn(async move {
+        let active_stops = tokio::task::spawn_blocking(move || {
+            let start = Instant::now();
+            let current_feed_trip_ids = active_stops_feed
+                .entity
+                .iter()
+                .filter_map(|x| x.vehicle.as_ref())
+                .filter_map(|x| x.trip.as_ref())
+                .map(|x| x.trip_id().to_string())
+                .collect::<HashSet<_>>();
+            let active_stops = schedule.map_or_else(Vec::new, |schedule| {
+                schedule
+                    .stops
+                    .values()
+                    .filter_map(|stop| {
+                        let stop_trip_ids = HashSet::from_iter(stop.trip_ids_stop_here.clone());
+                        let has_active_stops =
+                            stop_trip_ids.intersection(&current_feed_trip_ids).count() > 0;
+                        if has_active_stops {
+                            return Some(stop.id.clone());
+                        }
+                        None
+                    })
+                    .collect::<Vec<_>>()
+            });
+            trace!(
+                took = ?start.elapsed(),
+                stops = ?active_stops.len(),
+                "Computed active stops"
+            );
+
+            let active_stops = Versioned::new_now(1, Broadcast::ActiveStops(active_stops));
+
+            minicbor_serde::to_vec(&active_stops)
+        });
+
+        let active_stops = match active_stops.await {
+            Ok(active_stops) => active_stops,
+            Err(e) => {
+                error!(?e, "Error joining thread");
+                return;
+            }
+        };
+
+        let active_stops = match active_stops {
+            Ok(active_stops) => active_stops,
+            Err(e) => {
+                error!(?e, "Error serializing active stops");
+                return;
+            }
+        };
+
+        INITIAL_STATE
+            .write()
+            .await
+            .active_stops
+            .clone_from(&active_stops);
+
+        active_stops_app_state.send_transmission(Transmission::BroadcastToAll(active_stops));
+    });
+
+    let vehicles_feed = feed.clone();
+    let vehicles_app_state = app_state.clone();
+    tokio::task::spawn(async move {
         let vehicles = tokio::task::spawn_blocking(move || {
-            let vehicles_feed = vehicles_feed
+            let simple_vehicles_feed = vehicles_feed
                 .entity
                 .iter()
                 .filter_map(|x| x.vehicle.as_ref())
@@ -61,7 +153,8 @@ async fn feed_listener(app_state: Arc<V1AppState>) {
                 .map(|x| x.to_simple())
                 .collect::<Vec<_>>();
 
-            let vehicles = Versioned::new_now(1, Broadcast::Vehicles(vehicles_feed));
+            let vehicles = Versioned::new_now(1, Broadcast::Vehicles(simple_vehicles_feed));
+
             minicbor_serde::to_vec(&vehicles)
         })
         .await;
@@ -70,7 +163,7 @@ async fn feed_listener(app_state: Arc<V1AppState>) {
             Ok(vehicles) => vehicles,
             Err(e) => {
                 error!(?e, "Error joining thread");
-                continue;
+                return;
             }
         };
 
@@ -78,12 +171,14 @@ async fn feed_listener(app_state: Arc<V1AppState>) {
             Ok(vehicles) => vehicles,
             Err(e) => {
                 error!(?e, "Error serializing vehicles");
-                continue;
+                return;
             }
         };
 
-        app_state.send_transmission(Transmission::BroadcastToAll(vehicles));
-    }
+        INITIAL_STATE.write().await.vehicles.clone_from(&vehicles);
+
+        vehicles_app_state.send_transmission(Transmission::BroadcastToAll(vehicles));
+    });
 }
 
 pub struct V1AppState {
@@ -119,6 +214,7 @@ impl V1AppState {
 #[serde(rename_all = "camelCase")]
 pub enum Broadcast {
     Vehicles(Vec<Vec<MixedValue>>),
+    ActiveStops(Vec<String>),
 }
 
 pub enum Transmission {

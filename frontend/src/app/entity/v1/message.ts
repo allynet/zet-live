@@ -11,6 +11,11 @@ export const v1MessageSchema = versionedSchema(
     })
     .or(
       z.object({
+        activeStops: z.array(z.string()),
+      })
+    )
+    .or(
+      z.object({
         stopIds: z.array(z.string()),
         route: z.array(z.tuple([z.number(), z.number()])),
       })
