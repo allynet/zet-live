@@ -30,6 +30,9 @@ pub struct Trip {
     #[serde(default)]
     #[serde(alias = "bikes_allowed")]
     pub bikes_allowed: BikesAllowed,
+    #[serde(default)]
+    #[serde(alias = "stop_ids")]
+    pub stop_ids: Vec<String>,
 }
 
 impl FileData for Trip {

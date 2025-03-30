@@ -21,7 +21,7 @@ import BaseHead from "../components/BaseHead.astro";
         z-index: 0;
       }
       .not-following .vehicle-marker {
-        opacity: 0.25;
+        opacity: 0.1;
       }
 
       .following {
@@ -36,6 +36,7 @@ import BaseHead from "../components/BaseHead.astro";
         background-color: red;
         border-radius: 0.5em;
         transition: opacity 0.25s ease;
+        cursor: pointer;
       }
 
       .vehicle-marker-name {
@@ -64,10 +65,19 @@ import BaseHead from "../components/BaseHead.astro";
       import WorkerScript from "../scripts/worker.ts?worker";
       import type { WorkerResponse } from "../scripts/worker";
       import { API_URL } from "astro:env/client";
+      import { StopV1 } from "../app/entity/v1/stop";
 
       const apiUrl = API_URL || "/api";
 
       let MARKER_ID = 1;
+
+      let simpleStops: Record<StopV1["id"], StopV1> = {};
+      let stopsGrouped = [] as {
+        name: string;
+        lat: number;
+        lng: number;
+        ids: string[];
+      }[];
 
       const websocketUrl = (() => {
         const url = new URL(`${apiUrl}/v1/ws`, window.location.href);
@@ -90,9 +100,10 @@ import BaseHead from "../components/BaseHead.astro";
           sources: {
             osm: {
               type: "raster",
-              tiles: ["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],
+              tiles: ["https://tile.openstreetmap.bzh/ca/{z}/{x}/{y}.png"],
               tileSize: 256,
-              attribution: "&copy; OpenStreetMap Contributors",
+              attribution:
+                '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="https://www.openstreetmap.cat" target="_blank">Breton OpenStreetMap Team</a>',
               maxzoom: 19,
             },
           },
@@ -103,9 +114,13 @@ import BaseHead from "../components/BaseHead.astro";
               source: "osm", // This must match the source key above
             },
           ],
+          glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
         },
         center: [16, 45.8],
         zoom: 12,
+        canvasContextAttributes: {
+          antialias: true,
+        },
       });
       map.addControl(new NavigationControl());
       // Add geolocate control to the map.
@@ -120,6 +135,63 @@ import BaseHead from "../components/BaseHead.astro";
         })
       );
 
+      map.on("mouseenter", "route-stops", () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", "route-stops", () => {
+        map.getCanvas().style.cursor = "";
+      });
+      map.on("click", "route-stops", async (e) => {
+        e.preventDefault();
+        const stopIds = JSON.parse(
+          e.features?.find((x) => x.properties?.ids)?.properties?.ids ?? "[]"
+        ) as string[];
+
+        console.log("Only show vehicles that are at stops", stopIds);
+        const queryParams = new URLSearchParams();
+        for (const stopId of stopIds) {
+          queryParams.append("stop", stopId);
+        }
+        const trips = (await fetch(
+          `${apiUrl}/v1/schedule/stop-trips?${queryParams.toString()}`
+        )
+          .then((x) => x.json())
+          .catch(() => null)) as { d: { stopTrips: string[] } } | null;
+
+        if (!trips) {
+          return;
+        }
+
+        const tripIds = new Set(trips.d.stopTrips);
+
+        for (const marker of pins.values()) {
+          const $marker = marker.getElement();
+
+          if (tripIds.has($marker.dataset.tripId!)) {
+            $marker.classList.remove("not-following");
+            $marker.classList.add("following");
+            continue;
+          }
+
+          $marker.classList.add("not-following");
+          $marker.classList.remove("following");
+        }
+
+        map.setLayerZoomRange("delta-move-lines", 24, 24);
+        map.setLayerZoomRange("delta-move-lines-arrow", 24, 24);
+
+        const displayedStops = stopIds
+          .map((id) => simpleStops[id])
+          .filter(Boolean)
+          .map((stop) => ({
+            name: stop.name,
+            lat: stop.lat,
+            lng: stop.lng,
+            ids: [stop.id],
+          }));
+        setDisplayedStops(displayedStops);
+      });
+
       map.on("click", (e) => {
         const clickedOnMapCanvas = e.originalEvent.target === map.getCanvas();
 
@@ -127,6 +199,26 @@ import BaseHead from "../components/BaseHead.astro";
           clearFollowingMarker();
         }
       });
+
+      const setDisplayedStops = (
+        stops: { name: string; lat: number; lng: number; ids: string[] }[]
+      ) => {
+        // @ts-expect-error
+        map.getSource("route-stops")?.setData({
+          type: "FeatureCollection",
+          features: stops.map((stop) => ({
+            type: "Feature",
+            properties: {
+              name: stop.name,
+              ids: JSON.stringify(stop.ids),
+            },
+            geometry: {
+              type: "Point",
+              coordinates: [stop.lng, stop.lat],
+            },
+          })),
+        });
+      };
 
       map.on("load", () => {
         console.log("Map loaded");
@@ -175,7 +267,6 @@ import BaseHead from "../components/BaseHead.astro";
             features: [],
           },
         });
-
         map.addLayer({
           id: "current-following-route",
           type: "line",
@@ -192,7 +283,6 @@ import BaseHead from "../components/BaseHead.astro";
             "line-cap": "round",
           },
         });
-
         map.addLayer({
           id: "current-following-route-arrow",
           type: "symbol",
@@ -203,6 +293,29 @@ import BaseHead from "../components/BaseHead.astro";
             "icon-allow-overlap": true,
             "icon-image": "arrow-head",
             "icon-size": 0.25,
+            visibility: "visible",
+          },
+        });
+
+        map.addSource("route-stops", {
+          type: "geojson",
+          data: {
+            type: "FeatureCollection",
+            features: [],
+          },
+        });
+        setDisplayedStops(stopsGrouped);
+        map.addLayer({
+          id: "route-stops",
+          type: "symbol",
+          source: "route-stops",
+          layout: {
+            "text-font": ["Open Sans Bold"],
+            "text-field": ["get", "name"],
+            "text-variable-anchor": ["top", "bottom", "left", "right"],
+            "text-radial-offset": 0.5,
+            "text-justify": "auto",
+            "icon-allow-overlap": true,
             visibility: "visible",
           },
         });
@@ -222,10 +335,6 @@ import BaseHead from "../components/BaseHead.astro";
       }) {
         followingMarker = data.marker;
         const $followingMarker = followingMarker.getElement();
-
-        map.flyTo({
-          center: data.marker.getLngLat(),
-        });
 
         map.setLayerZoomRange("delta-move-lines", 24, 24);
         map.setLayerZoomRange("delta-move-lines-arrow", 24, 24);
@@ -263,7 +372,7 @@ import BaseHead from "../components/BaseHead.astro";
         }
       }
 
-      function createMapMarkerElement(vehicle: VehicleV1) {
+      function createMapVehicleMarkerElement(vehicle: VehicleV1) {
         const $container = document.createElement("div");
         $container.id = `vehicle-marker-${MARKER_ID++}`;
         $container.dataset.id = vehicle.id.toString();
@@ -351,12 +460,12 @@ import BaseHead from "../components/BaseHead.astro";
 
           // Update existing vehicles and add new ones
           for (const v of vehicles) {
-            const pin = pins.get(v.id);
+            const pin = pins.get(v.getMapId());
             const vehicle = v.setMapEntity(pin);
 
             const loc = vehicle.mapEntity?.getLngLat()?.toArray();
 
-            vehicle.updateMapEntity(map, createMapMarkerElement);
+            vehicle.updateMapEntity(map, createMapVehicleMarkerElement);
 
             if (loc) {
               locationPairs.push({
@@ -366,14 +475,14 @@ import BaseHead from "../components/BaseHead.astro";
               });
             }
 
-            pins.set(vehicle.id, vehicle.mapEntity!);
+            pins.set(vehicle.getMapId(), vehicle.mapEntity!);
 
             if (vehicle.mapEntity === followingMarker) {
               void createCurrentFollowingRouteSource(vehicle.tripId);
             }
           }
 
-          const ids = vehicles.map((v) => v.id);
+          const ids = vehicles.map((v) => v.getMapId());
           const idSet = new Set(ids);
           // Remove vehicles that are no longer in the message
           for (const [id, pin] of pins.entries()) {
@@ -398,6 +507,89 @@ import BaseHead from "../components/BaseHead.astro";
             })),
           });
         }
+
+        if (typeof message.d === "object" && "simpleStops" in message.d) {
+          const stops = message.d.simpleStops.map(StopV1.fromSimple);
+          const areaOf = (stops: StopV1[]) => {
+            const lats = stops.map((s) => s.lat);
+            const lngs = stops.map((s) => s.lng);
+
+            const minLat = Math.min(...lats);
+            const maxLat = Math.max(...lats);
+            const minLng = Math.min(...lngs);
+            const maxLng = Math.max(...lngs);
+
+            return (maxLat - minLat) * (maxLng - minLng);
+          };
+
+          console.log("Updating stops");
+
+          simpleStops = Object.fromEntries(
+            stops.map((stop) => [stop.id, stop])
+          );
+
+          const startThing = window.performance.now();
+          type StopsByName = Record<string, StopV1[]>;
+          const stopsByName = Object.values(simpleStops).reduce((acc, a) => {
+            if (!acc[a.name]) {
+              acc[a.name] = [];
+            }
+            acc[a.name].push(a);
+            return acc;
+          }, {} as StopsByName);
+
+          requestIdleCallback(() => {
+            const stopsByDistance = Object.entries(stopsByName).reduce(
+              (acc, [name, stops]) => {
+                const stopsGrouped = [] as {
+                  stops: StopV1[];
+                }[];
+
+                for (const stop of stops) {
+                  const closeEnoughStop = stopsGrouped.find(
+                    (x) => areaOf([stop, ...x.stops]) < 1e-7
+                  );
+
+                  if (closeEnoughStop) {
+                    closeEnoughStop.stops.push(stop);
+                    continue;
+                  }
+
+                  stopsGrouped.push({
+                    stops: [stop],
+                  });
+                }
+
+                acc[name] = stopsGrouped;
+
+                return acc;
+              },
+              {} as Record<string, { stops: StopV1[] }[]>
+            );
+            console.log(stopsByDistance);
+            requestIdleCallback(() => {
+              stopsGrouped = Object.values(stopsByDistance)
+                .flatMap((x) => x.map((y) => y.stops))
+                .map((a) => {
+                  const name = a[0]!.name;
+                  const avgLat =
+                    a.reduce((acc, stop) => acc + stop.lat, 0) / a.length;
+                  const avgLng =
+                    a.reduce((acc, stop) => acc + stop.lng, 0) / a.length;
+                  const ids = a.map((stop) => stop.id);
+                  return { name, lat: avgLat, lng: avgLng, ids };
+                });
+
+              setDisplayedStops(stopsGrouped);
+
+              console.log(
+                "Stops by distance calculated in",
+                window.performance.now() - startThing,
+                "ms"
+              );
+            });
+          });
+        }
       }
 
       function createArrowHeadImage(color: string) {
@@ -420,11 +612,14 @@ import BaseHead from "../components/BaseHead.astro";
       }
 
       async function createCurrentFollowingRouteSource(tripId: string) {
-        const shape = (await fetch(
-          `${apiUrl}/v1/schedule/shapes/for-trip/${tripId}`
-        )
+        const shape = (await fetch(`${apiUrl}/v1/schedule/trip-info/${tripId}`)
           .then((x) => x.json())
-          .catch(() => null)) as { d: [number, number][] } | null;
+          .catch(() => null)) as {
+          d: {
+            stopIds: string[];
+            route: [number, number][];
+          };
+        } | null;
 
         if (!shape) {
           console.error("Shape not found for trip", tripId);
@@ -442,11 +637,24 @@ import BaseHead from "../components/BaseHead.astro";
               },
               geometry: {
                 type: "LineString",
-                coordinates: shape.d,
+                coordinates: shape.d.route,
               },
             },
           ],
         });
+
+        const stops = shape.d.stopIds
+          .map((id) => simpleStops[id])
+          .filter(Boolean);
+
+        setDisplayedStops(
+          stops.map((stop) => ({
+            name: stop.name,
+            lat: stop.lat,
+            lng: stop.lng,
+            ids: [stop.id],
+          }))
+        );
 
         return true;
       }
@@ -455,20 +663,41 @@ import BaseHead from "../components/BaseHead.astro";
         // @ts-expect-error
         map.getSource("current-following-route")?.setData({
           type: "FeatureCollection",
-          features: [
-            {
-              type: "Feature",
-              properties: {
-                color: "#f0f",
-              },
-              geometry: {
-                type: "LineString",
-                coordinates: [],
-              },
-            },
-          ],
+          features: [],
         });
+
+        setDisplayedStops(stopsGrouped);
       }
+
+      async function updateStops() {
+        let success = false;
+
+        while (!success) {
+          success = await fetch(`${apiUrl}/v1/schedule/simple-stops`, {
+            headers: {
+              accept: "application/cbor,application/json",
+            },
+          })
+            .then((x) => x.arrayBuffer())
+            .then((x) => {
+              worker.postMessage({
+                type: "process-message",
+                data: new Blob([x]),
+              });
+              return true;
+            })
+            .catch(() => false);
+
+          if (!success) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 5000 + 5000 * Math.random())
+            );
+          }
+        }
+      }
+
+      updateStops();
+      setInterval(updateStops, 60_000 + 60_000 * Math.random());
 
       while (true) {
         await connectWebSocket();

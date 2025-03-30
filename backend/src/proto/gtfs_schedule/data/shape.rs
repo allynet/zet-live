@@ -10,13 +10,13 @@ pub struct Shape {
     #[serde(alias = "shape_id")]
     pub id: String,
     #[serde(alias = "shape_pt_lat")]
-    pub latitude: f64,
+    pub latitude: f32,
     #[serde(alias = "shape_pt_lon")]
-    pub longitude: f64,
+    pub longitude: f32,
     #[serde(alias = "shape_pt_sequence")]
     pub sequence: u32,
     #[serde(alias = "shape_dist_traveled")]
-    pub distance: Option<f64>,
+    pub distance: Option<f32>,
 }
 
 impl FileData for Shape {
@@ -28,12 +28,12 @@ impl FileData for Shape {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SimpleShape {
-    pub latitude: f64,
-    pub longitude: f64,
+    pub latitude: f32,
+    pub longitude: f32,
 }
 
 impl SimpleShape {
-    pub const fn to_tuple(&self) -> (f64, f64) {
+    pub const fn to_tuple(&self) -> (f32, f32) {
         (self.longitude, self.latitude)
     }
 }

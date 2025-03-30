@@ -32,10 +32,10 @@ pub struct Route {
     pub sort_order: Option<u32>,
     #[serde(default)]
     #[serde(alias = "continuous_pickup")]
-    pub continuous_pickup: ContinuousPickup,
+    pub continuous_pickup: PickupType,
     #[serde(default)]
     #[serde(alias = "continuous_drop_off")]
-    pub continuous_drop_off: ContinuousDropOff,
+    pub continuous_drop_off: DropOffType,
     #[serde(alias = "network_id")]
     pub network_id: Option<String>,
 }
@@ -81,7 +81,7 @@ pub enum RouteType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize_repr, Deserialize_repr)]
 #[repr(u8)]
-pub enum ContinuousPickup {
+pub enum PickupType {
     /// Continuous stopping pickup.
     Continuous = 0,
     /// No continuous stopping pickup.
@@ -95,7 +95,7 @@ pub enum ContinuousPickup {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize_repr, Deserialize_repr)]
 #[repr(u8)]
-pub enum ContinuousDropOff {
+pub enum DropOffType {
     /// Continuous stopping drop off.
     Continuous = 0,
     /// No continuous stopping drop off.

@@ -29,6 +29,8 @@ pub fn create_v1_router() -> Router {
         .route("/schedule/routes/{id}", get(schedule::get_route))
         .route("/schedule/stops", get(schedule::get_stops))
         .route("/schedule/stops/{id}", get(schedule::get_stop))
+        .route("/schedule/simple-stops", get(schedule::get_simple_stops))
+        .route("/schedule/stop-trips", get(schedule::get_stop_trips))
         .route("/schedule/trips", get(schedule::get_trips))
         .route("/schedule/trips/{id}", get(schedule::get_trip))
         .route("/schedule/shapes", get(schedule::get_shapes))
@@ -36,6 +38,10 @@ pub fn create_v1_router() -> Router {
         .route(
             "/schedule/shapes/for-trip/{id}",
             get(schedule::get_shape_for_trip),
+        )
+        .route(
+            "/schedule/trip-info/{trip_id}",
+            get(schedule::get_trip_info),
         )
         .with_state(app_state)
 }

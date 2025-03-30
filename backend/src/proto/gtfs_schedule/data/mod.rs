@@ -5,12 +5,14 @@ use serde::de::DeserializeOwned;
 pub mod route;
 pub mod shape;
 pub mod stop;
+pub mod stop_time;
 pub mod trip;
 
 pub use route::*;
 pub use shape::*;
 pub use stop::*;
-use tracing::{debug, trace};
+pub use stop_time::*;
+use tracing::{debug, trace, warn};
 pub use trip::*;
 
 pub struct GtfsSchedule {
@@ -44,12 +46,32 @@ impl GtfsSchedule {
             }
             let start = Instant::now();
             let stops = Stop::read_from_zip(&mut zip)?;
-            let stops = stops.into_iter().map(|x| (x.id.clone(), x)).collect();
+            let mut stops: HashMap<String, Stop> =
+                stops.into_iter().map(|x| (x.id.clone(), x)).collect();
             trace!(took = ?start.elapsed(), "Stops read");
+            let start = Instant::now();
             let trips = Trip::read_from_zip(&mut zip)?;
-            let trips = trips.into_iter().map(|x| (x.id.clone(), x)).collect();
+            let mut trips: HashMap<String, Trip> =
+                trips.into_iter().map(|x| (x.id.clone(), x)).collect();
             trace!(took = ?start.elapsed(), "Trips read");
-            debug!(took = ?start_task.elapsed(), "Parsed data from zip");
+            let start = Instant::now();
+            let mut stop_times = StopTime::read_from_zip(&mut zip)?;
+            stop_times.sort_by_key(|x| x.stop_sequence);
+            trace!(took = ?start.elapsed(), "Stop times read");
+            let start = Instant::now();
+            for stop_time in stop_times {
+                if let Some(trip) = trips.get_mut(&stop_time.trip_id) {
+                    trip.stop_ids.push(stop_time.stop_id.clone());
+                } else {
+                    warn!("Trip {} not found", stop_time.trip_id);
+                }
+                if let Some(stop) = stops.get_mut(&stop_time.stop_id) {
+                    stop.trip_ids_stop_here.push(stop_time.trip_id.clone());
+                } else {
+                    warn!("Stop {} not found", stop_time.stop_id);
+                }
+            }
+            trace!(took = ?start.elapsed(), "Stop times processed");
 
             Ok(Self {
                 ts: chrono::Utc::now(),

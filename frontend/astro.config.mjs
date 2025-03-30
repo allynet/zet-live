@@ -14,6 +14,7 @@ export default defineConfig({
   },
   server: {
     host: true,
+    allowedHosts: true,
   },
   env: {
     schema: {

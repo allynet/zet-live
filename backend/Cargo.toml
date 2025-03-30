@@ -7,6 +7,7 @@ edition = "2024"
 accept-header = "0.2.3"
 axum = { version = "0.8.1", features = ["macros", "ws"] }
 axum-client-ip = "0.7.0"
+axum-extra = { version = "0.10.1", features = ["query"] }
 chrono = { version = "0.4.40", features = ["serde"] }
 clap = { version = "4.5.32", features = ["derive", "env"] }
 clap_complete = "4.5.47"

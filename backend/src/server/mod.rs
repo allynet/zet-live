@@ -10,7 +10,7 @@ mod routes;
 use crate::{
     cli::ServerConfig,
     proto::{
-        gtfs_realtime::fetcher::spawn_feed_fetcher,
+        gtfs_realtime::fetcher::{spawn_feed_fetcher, wait_for_feed_update},
         gtfs_schedule::fetcher::{spawn_schedule_fetcher, wait_for_schedule_update},
     },
 };
@@ -20,8 +20,8 @@ pub async fn run(server_config: &ServerConfig) {
     spawn_feed_fetcher();
     spawn_schedule_fetcher();
 
-    info!("Waiting for schedule info");
-    wait_for_schedule_update().await;
+    info!("Waiting for initial schedule info and feed");
+    tokio::join!(wait_for_schedule_update(), wait_for_feed_update());
 
     let app = routes::create_router();
 

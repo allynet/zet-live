@@ -1,67 +1,68 @@
 import { Map as MaplibreglMap, Marker as MaplibreglMarker } from "maplibre-gl";
 
-export class VehicleV1<
+export class StopV1<
   TMapEntity extends MaplibreglMarker | undefined = MaplibreglMarker | undefined
 > {
   id: string;
-  routeId: string;
-  tripId: string;
+  name: string;
   lat: number;
   lng: number;
   mapEntity = undefined as TMapEntity;
 
   public constructor(data: {
     id: string;
-    routeId: string;
-    tripId: string;
-    latitude: number;
-    longitude: number;
+    name: string;
+    lat: number;
+    lng: number;
   }) {
     this.id = data.id;
-    this.routeId = data.routeId;
-    this.tripId = data.tripId;
-    this.lat = data.latitude;
-    this.lng = data.longitude;
+    this.name = data.name;
+    this.lat = data.lat;
+    this.lng = data.lng;
   }
 
   public static fromSimple(data: (string | number)[]) {
-    if (data.length < 5) {
+    if (data.length < 4) {
       throw new Error("Not enough data");
     }
 
-    return new VehicleV1({
+    return new StopV1({
       id: String(data[0]),
-      routeId: String(data[1]),
-      tripId: String(data[2]),
-      latitude: Number(data[3]),
-      longitude: Number(data[4]),
+      name: String(data[1]),
+      lat: Number(data[2]),
+      lng: Number(data[3]),
     });
   }
 
   public toJSON() {
     return {
       id: this.id,
-      routeId: this.routeId,
-      tripId: this.tripId,
+      name: this.name,
       latitude: this.lat,
       longitude: this.lng,
     };
   }
 
+  public distanceFrom(other: Pick<StopV1, "lat" | "lng">): number {
+    return Math.sqrt(
+      Math.pow(this.lat - other.lat, 2) + Math.pow(this.lng - other.lng, 2)
+    );
+  }
+
   public getMapId() {
-    return `vehicle-${this.id}`;
+    return `stop-${this.id}`;
   }
 
   public setMapEntity<TEntity extends MaplibreglMarker | undefined>(
     entity: TEntity
   ) {
     this.mapEntity = entity as never;
-    return this as unknown as VehicleV1<TEntity>;
+    return this as unknown as StopV1<TEntity>;
   }
 
   public updateMapEntity(
     map: MaplibreglMap,
-    createMapMarkerElement: (vehicle: VehicleV1) => HTMLElement
+    createMapMarkerElement: (stop: StopV1) => HTMLElement
   ) {
     let entity =
       this.mapEntity ??
