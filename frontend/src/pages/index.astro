@@ -57,6 +57,7 @@ import BaseHead from "../components/BaseHead.astro";
         Map as MaplibreglMap,
         Marker as MaplibreglMarker,
         NavigationControl,
+        GeolocateControl,
       } from "maplibre-gl";
       import type { V1Message } from "../app/entity/v1/message";
       import { VehicleV1 } from "../app/entity/v1/vehicle";
@@ -107,6 +108,17 @@ import BaseHead from "../components/BaseHead.astro";
         zoom: 12,
       });
       map.addControl(new NavigationControl());
+      // Add geolocate control to the map.
+      map.addControl(
+        new GeolocateControl({
+          positionOptions: {
+            enableHighAccuracy: true,
+          },
+          trackUserLocation: true,
+          showAccuracyCircle: true,
+          showUserLocation: true,
+        })
+      );
 
       map.on("click", (e) => {
         const clickedOnMapCanvas = e.originalEvent.target === map.getCanvas();
