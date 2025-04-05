@@ -101,11 +101,23 @@ import BaseHead from "../components/BaseHead.astro";
           sources: {
             osm: {
               type: "raster",
-              tiles: ["https://tile.openstreetmap.bzh/ca/{z}/{x}/{y}.png"],
+              tiles: [
+                "https://a.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png",
+                "https://b.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png",
+                "https://c.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png",
+                "https://d.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png",
+                // "https://tile.openstreetmap.bzh/ca/{z}/{x}/{y}.png"
+                // "https://a.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png",
+                // "https://b.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png",
+                // "https://c.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png",
+                // "https://d.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png",
+                // "https://services.arcgisonline.com/arcgis/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+              ],
               tileSize: 256,
               attribution:
-                '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="https://www.openstreetmap.cat" target="_blank">Breton OpenStreetMap Team</a>',
-              maxzoom: 19,
+                '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+              // '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="https://www.openstreetmap.cat" target="_blank">Breton OpenStreetMap Team</a>',
+              maxzoom: 22,
             },
           },
           layers: [
@@ -115,7 +127,7 @@ import BaseHead from "../components/BaseHead.astro";
               source: "osm", // This must match the source key above
             },
           ],
-          glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+          glyphs: "https://unopengis.github.io/noto/{fontstack}/{range}.pbf",
         },
         center: [16, 45.8],
         zoom: 12,
@@ -312,7 +324,7 @@ import BaseHead from "../components/BaseHead.astro";
           type: "symbol",
           source: "route-stops",
           layout: {
-            "text-font": ["Open Sans Bold"],
+            "text-font": ["sans700"],
             "text-field": ["get", "name"],
             "text-variable-anchor": ["top", "bottom", "left", "right"],
             "text-radial-offset": 0.5,
