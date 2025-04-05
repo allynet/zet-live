@@ -11,6 +11,11 @@ import {
   SITE_URL,
 } from "../app/consts";
 import type { HTMLAttributes } from "astro/types";
+import {
+  PLAUSIBLE_SCRIPT_URL,
+  PUBLIC_SITE_URL,
+  PLAUSIBLE_API_URL,
+} from "astro:env/client";
 
 type SeoPropsStrict = {
   title?: string;
@@ -187,6 +192,16 @@ const seoData = merge(
 <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="me" href={links.mastodon.href} />
+{
+  PLAUSIBLE_SCRIPT_URL ? (
+    <script
+      defer
+      data-domain={new URL(PUBLIC_SITE_URL).hostname}
+      data-api={PLAUSIBLE_API_URL}
+      src={PLAUSIBLE_SCRIPT_URL}
+    />
+  ) : null
+}
 {preloadFiles?.map((x) => <link rel="preload" {...x} />)}
 <SEO {...seoData} />
 {

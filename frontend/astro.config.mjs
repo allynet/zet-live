@@ -28,6 +28,16 @@ export default defineConfig({
         access: "public",
         default: "https://zet.igr.ec",
       }),
+      PLAUSIBLE_SCRIPT_URL: envField.string({
+        context: "client",
+        access: "public",
+        optional: true,
+      }),
+      PLAUSIBLE_API_URL: envField.string({
+        context: "client",
+        access: "public",
+        optional: true,
+      }),
     },
   },
   vite: {
