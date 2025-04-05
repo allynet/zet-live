@@ -62,6 +62,7 @@ WORKDIR /app
 COPY ./frontend/package.json ./frontend/bun.lock ./
 RUN bun install
 COPY ./frontend/ .
+RUN if [ -f .env.docker ]; then mv .env.docker .env && echo "Copied .env.docker to .env" && cat .env; else echo "No .env.docker file found"; fi
 RUN bun run build
 
 

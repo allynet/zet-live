@@ -25,8 +25,8 @@ jobs:
         uses: docker/setup-buildx-action@v3
       - name: Create env file
         run: |
-          echo "PLAUSIBLE_SCRIPT_URL=/pevts/pl-a/js/script.js" > ./frontend/.env
-          echo "PLAUSIBLE_API_URL=/pevts/pl-a/api/event" >> ./frontend/.env
+          echo "PLAUSIBLE_SCRIPT_URL=/pevts/pl-a/js/script.js" > ./frontend/.env.docker
+          echo "PLAUSIBLE_API_URL=/pevts/pl-a/api/event" >> ./frontend/.env.docker
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
