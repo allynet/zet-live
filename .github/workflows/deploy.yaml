@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     steps:
       - uses: actions/checkout@v3
       - name: Login to Docker Hub
@@ -36,8 +36,8 @@ jobs:
           tags: |
             allypost/zet-live:latest
             allypost/zet-live:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # cache-from: type=gha
+          # cache-to: type=gha,mode=max
 
   notify-watchtower:
     runs-on: ubuntu-latest
