@@ -10,6 +10,7 @@ import BaseHead from "../components/BaseHead.astro";
     <link rel="preconnect" href="https://b.basemaps.cartocdn.com" />
     <link rel="preconnect" href="https://c.basemaps.cartocdn.com" />
     <link rel="preconnect" href="https://d.basemaps.cartocdn.com" />
+    <link rel="preconnect" href="https://tiles.openfreemap.org" />
     <link
       rel="stylesheet"
       href="https://cdn.allypost.net/pkg/font/IosevkAlly/full-family.css"
@@ -72,6 +73,7 @@ import BaseHead from "../components/BaseHead.astro";
         Marker as MaplibreglMarker,
         NavigationControl,
         GeolocateControl,
+        type StyleSpecification,
       } from "maplibre-gl";
       import type { V1Message } from "../app/entity/v1/message";
       import { VehicleV1 } from "../app/entity/v1/vehicle";
@@ -79,6 +81,7 @@ import BaseHead from "../components/BaseHead.astro";
       import type { WorkerResponse } from "../scripts/worker";
       import { API_URL } from "astro:env/client";
       import { StopV1 } from "../app/entity/v1/stop";
+      import mapStyle3d from "../data/maps/style/3d.json";
 
       const apiUrl = API_URL || "/api";
 
@@ -109,41 +112,7 @@ import BaseHead from "../components/BaseHead.astro";
       const map = new MaplibreglMap({
         container: "map",
         hash: true,
-        style: {
-          version: 8,
-          sources: {
-            osm: {
-              type: "raster",
-              tiles: [
-                "https://a.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png",
-                "https://b.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png",
-                "https://c.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png",
-                "https://d.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png",
-                // "https://tile.openstreetmap.bzh/ca/{z}/{x}/{y}.png"
-                // "https://a.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png",
-                // "https://b.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png",
-                // "https://c.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png",
-                // "https://d.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png",
-                // "https://services.arcgisonline.com/arcgis/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-              ],
-              tileSize: 256,
-              attribution:
-                '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-              // '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="https://www.openstreetmap.cat" target="_blank">Breton OpenStreetMap Team</a>',
-              maxzoom: 22,
-            },
-          },
-          layers: [
-            {
-              id: "osm",
-              type: "raster",
-              source: "osm", // This must match the source key above
-            },
-          ],
-          // glyphs: "https://unopengis.github.io/noto/{fontstack}/{range}.pbf",
-          // glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf"
-          glyphs: "https://cdn.allypost.net/pkg/pbf-font/{fontstack}/{range}.pbf"
-        },
+        style: mapStyle3d as StyleSpecification,
         center: [16, 45.8],
         zoom: 12,
         canvasContextAttributes: {
