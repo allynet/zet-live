@@ -5,6 +5,15 @@ import BaseHead from "../components/BaseHead.astro";
 <html lang="en">
   <head>
     <BaseHead title="Live view" />
+    <link rel="preconnect" href="https://cdn.allypost.net" />
+    <link rel="preconnect" href="https://a.basemaps.cartocdn.com" />
+    <link rel="preconnect" href="https://b.basemaps.cartocdn.com" />
+    <link rel="preconnect" href="https://c.basemaps.cartocdn.com" />
+    <link rel="preconnect" href="https://d.basemaps.cartocdn.com" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.allypost.net/pkg/font/IosevkAlly/full-family.css"
+    />
     <style>
       body {
         margin: 0;
@@ -14,6 +23,11 @@ import BaseHead from "../components/BaseHead.astro";
       body,
       #map {
         height: 100%;
+      }
+
+      body,
+      .maplibregl-map {
+        font-family: "IosevkAllyP", sans-serif;
       }
     </style>
     <style is:global>
@@ -44,7 +58,6 @@ import BaseHead from "../components/BaseHead.astro";
         line-height: 1em;
         padding: 0.5rem;
         font-weight: bold;
-        font-family: sans-serif;
         font-size: 1rem;
         color: white;
       }
@@ -127,7 +140,9 @@ import BaseHead from "../components/BaseHead.astro";
               source: "osm", // This must match the source key above
             },
           ],
-          glyphs: "https://unopengis.github.io/noto/{fontstack}/{range}.pbf",
+          // glyphs: "https://unopengis.github.io/noto/{fontstack}/{range}.pbf",
+          // glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf"
+          glyphs: "https://cdn.allypost.net/pkg/pbf-font/{fontstack}/{range}.pbf"
         },
         center: [16, 45.8],
         zoom: 12,
@@ -324,7 +339,9 @@ import BaseHead from "../components/BaseHead.astro";
           type: "symbol",
           source: "route-stops",
           layout: {
-            "text-font": ["sans700"],
+            // "text-font": ["sans700"],
+            // "text-font": ["Noto Sans Bold"],
+            "text-font": ["IosevkAlly Bold"],
             "text-field": ["get", "name"],
             "text-variable-anchor": ["top", "bottom", "left", "right"],
             "text-radial-offset": 0.5,
