@@ -12,6 +12,13 @@
       "tileSize": 256,
       "attribution": "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors &copy; <a href=\"https://carto.com/attributions\">CARTO</a>",
       "maxzoom": 22
+    },
+    "route-stops": {
+      "type": "geojson",
+      "data": {
+        "type": "FeatureCollection",
+        "features": []
+      }
     }
   },
   "layers": [
@@ -19,6 +26,21 @@
       "id": "osm",
       "type": "raster",
       "source": "osm"
+    },
+    {
+      "id": "route-stop-dot",
+      "type": "circle",
+      "source": "route-stops",
+      "paint": {
+        "circle-radius": {
+          "stops": [
+            [12, 2],
+            [20, 5]
+          ]
+        },
+        "circle-color": "#000",
+        "circle-opacity": 0.67
+      }
     }
   ],
   "glyphs": "https://cdn.allypost.net/pkg/pbf-font/{fontstack}/{range}.pbf"

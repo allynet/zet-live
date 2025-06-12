@@ -13,6 +13,13 @@
     "openmaptiles": {
       "type": "vector",
       "url": "https://tiles.openfreemap.org/planet"
+    },
+    "route-stops": {
+      "type": "geojson",
+      "data": {
+        "type": "FeatureCollection",
+        "features": []
+      }
     }
   },
   "sprite": "https://tiles.openfreemap.org/sprites/ofm_f384/ofm",
@@ -2177,7 +2184,7 @@
         "text-font": ["IosevkAllyP Italic"],
         "text-letter-spacing": 0.2,
         "text-max-width": 5,
-        "text-size": ["interpolate", ["linear"], ["zoom"], 0, 10, 8, 12],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 16, 10, 22, 15],
         "visibility": "visible"
       },
       "paint": {
@@ -2391,7 +2398,7 @@
         ],
         "text-font": ["IosevkAllyP Regular"],
         "text-rotation-alignment": "map",
-        "text-size": ["interpolate", ["linear"], ["zoom"], 10, 9, 11, 10],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 15, 9, 22, 16],
         "text-keep-upright": true
       },
       "paint": {
@@ -2428,7 +2435,7 @@
         ],
         "text-font": ["IosevkAllyP Regular"],
         "text-rotation-alignment": "map",
-        "text-size": ["interpolate", ["linear"], ["zoom"], 10, 9, 11, 10],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 15, 9, 22, 16],
         "text-keep-upright": true
       },
       "paint": {
@@ -2461,7 +2468,7 @@
         ],
         "text-font": ["IosevkAllyP Regular"],
         "text-rotation-alignment": "map",
-        "text-size": ["interpolate", ["linear"], ["zoom"], 10, 9, 11, 10],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 15, 9, 22, 16],
         "text-keep-upright": true
       },
       "paint": {
@@ -2933,6 +2940,21 @@
         "text-halo-blur": 1,
         "text-halo-color": "#fff",
         "text-halo-width": 1
+      }
+    },
+    {
+      "id": "route-stop-dot",
+      "type": "circle",
+      "source": "route-stops",
+      "paint": {
+        "circle-radius": {
+          "stops": [
+            [12, 2],
+            [20, 5]
+          ]
+        },
+        "circle-color": "#000",
+        "circle-opacity": 0.67
       }
     }
   ],
