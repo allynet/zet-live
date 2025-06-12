@@ -315,8 +315,22 @@ import BaseHead from "../components/BaseHead.astro";
             "text-variable-anchor": ["top", "bottom", "left", "right"],
             "text-radial-offset": 0.5,
             "text-justify": "auto",
-            "icon-allow-overlap": true,
-            visibility: "visible",
+          },
+          paint: {
+            "text-color": "#000",
+            "text-halo-color": "#fff",
+            "text-halo-width": 3,
+            "text-halo-blur": 1,
+          },
+        });
+        map.addLayer({
+          id: "route-stop-dot",
+          type: "circle",
+          source: "route-stops",
+          paint: {
+            "circle-radius": 3,
+            "circle-color": "#000",
+            "circle-opacity": 0.67,
           },
         });
       });
