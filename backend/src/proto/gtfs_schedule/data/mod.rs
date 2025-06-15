@@ -104,7 +104,10 @@ pub trait FileData: Sized + DeserializeOwned {
         Ok(Self::parse(&mut reader))
     }
 
-    fn parse(reader: &mut csv::Reader<zip::read::ZipFile<'_>>) -> Vec<Self> {
+    fn parse<R>(reader: &mut csv::Reader<zip::read::ZipFile<'_, R>>) -> Vec<Self>
+    where
+        R: std::io::Read + std::io::Seek,
+    {
         reader
             .deserialize::<Self>()
             .filter_map(std::result::Result::ok)
