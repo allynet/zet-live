@@ -15,13 +15,23 @@ use crate::{
     },
 };
 
-pub async fn run(server_config: &ServerConfig) {
+pub async fn run(server_config: &ServerConfig) -> Result<(), Box<dyn std::error::Error>> {
     debug!("Starting server");
     spawn_feed_fetcher();
     spawn_schedule_fetcher();
 
     info!("Waiting for initial schedule info and feed");
-    tokio::join!(wait_for_schedule_update(), wait_for_feed_update());
+    let initial_join_set = {
+        let mut s = tokio::task::JoinSet::new();
+        s.spawn(async move {
+            wait_for_schedule_update().await;
+        });
+        s.spawn(async move {
+            wait_for_feed_update().await;
+        });
+        s
+    };
+    initial_join_set.join_all().await;
 
     let app = routes::create_router();
 
@@ -38,8 +48,10 @@ pub async fn run(server_config: &ServerConfig) {
     .await
     {
         error!(?e, "Failed to start server");
-        std::process::exit(1);
+        return Err(e.into());
     }
+
+    Ok(())
 }
 
 async fn create_listener(server_config: &ServerConfig) -> TcpListener {

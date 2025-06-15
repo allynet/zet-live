@@ -1,5 +1,5 @@
 use cli::{CliCommands, Config};
-use tracing::{error, info, trace};
+use tracing::{error, info, trace, warn};
 
 mod cli;
 mod entity;
@@ -37,6 +37,29 @@ fn main() {
 
     match config.cmd {
         CliCommands::Server(ref server_config) => {
+            let token = tokio_util::sync::CancellationToken::new();
+            #[cfg(not(target_os = "windows"))]
+            {
+                let token = token.clone();
+                let mut signals =
+                    signal_hook::iterator::Signals::new(signal_hook::consts::TERM_SIGNALS)
+                        .expect("Failed to create signals");
+
+                std::thread::spawn(move || {
+                    if let Some(signal) = signals.forever().next() {
+                        warn!("Received signal {signal}, shutting down");
+                        token.cancel();
+                        let secs = 8;
+                        std::thread::sleep(std::time::Duration::from_secs(secs));
+                        error!(
+                            "Could not shut down gracefully after {secs} seconds, forcefully \
+                             shutting down"
+                        );
+                        std::process::exit(1);
+                    }
+                });
+            }
+
             let runtime = match tokio::runtime::Runtime::new() {
                 Ok(x) => x,
                 Err(err) => {
@@ -45,7 +68,20 @@ fn main() {
                 }
             };
 
-            runtime.block_on(server::run(server_config));
+            let res = token.run_until_cancelled(server::run(server_config));
+            let res = runtime.block_on(res);
+
+            runtime.shutdown_timeout(std::time::Duration::from_secs(1));
+            match res {
+                Some(Ok(())) | None => {
+                    info!("Server stopped successfully");
+                    std::process::exit(0);
+                }
+                Some(Err(e)) => {
+                    error!(?e, "Server stopped with error");
+                    std::process::exit(1);
+                }
+            }
         }
     }
 }
