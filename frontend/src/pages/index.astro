@@ -56,15 +56,25 @@ import BaseHead from "../components/BaseHead.astro";
         z-index: 500;
       }
 
+      @property --theme-color {
+        syntax: "<color>";
+        inherits: true;
+        initial-value: black;
+      }
+
       .vehicle-marker {
+        position: relative;
         display: flex;
         aspect-ratio: 1;
         align-items: center;
         justify-content: center;
-        background-color: red;
-        border-radius: 0.5em;
+        background-color: var(--theme-color);
+        border-radius: 1em;
         transition: opacity 0.25s ease;
         cursor: pointer;
+        /* border: 1px solid black; */
+        filter: drop-shadow(1px 0px 0px black) drop-shadow(-1px 0px 0px black)
+          drop-shadow(0px 1px 0px black) drop-shadow(0px -1px 0px black);
       }
 
       .vehicle-marker-name {
@@ -74,6 +84,37 @@ import BaseHead from "../components/BaseHead.astro";
         font-weight: bold;
         font-size: 1rem;
         color: white;
+        min-width: 2ch;
+        text-align: center;
+      }
+
+      .vehicle-marker-arrow-container {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transform: rotate(
+          calc((var(--move-angle, 0) * -1rad) - (var(--bearing) * 1deg))
+        );
+        opacity: calc(abs(var(--move-angle, 0)) * 10000000%);
+        pointer-events: none;
+        user-select: none;
+      }
+
+      .vehicle-marker-arrow {
+        position: absolute;
+        font-size: 1.5rem;
+        left: 100%;
+        width: 0;
+        height: 0;
+        border-top: 0.4em solid transparent;
+        border-bottom: 0.4em solid transparent;
+        border-left: 0.6em solid var(--theme-color);
+        transform: translate(-15%);
       }
     </style>
   </head>
@@ -233,6 +274,11 @@ import BaseHead from "../components/BaseHead.astro";
       map.on("load", () => {
         console.log("Map loaded");
 
+        document.body.style.setProperty(
+          "--bearing",
+          map.getBearing().toString()
+        );
+
         map.addSource("delta-move-lines", {
           type: "geojson",
           data: {
@@ -368,6 +414,13 @@ import BaseHead from "../components/BaseHead.astro";
         });
       });
 
+      map.on("rotate", () => {
+        document.body.style.setProperty(
+          "--bearing",
+          map.getBearing().toString()
+        );
+      });
+
       {
         createArrowHeadImage("#00000077").then((image) => {
           map.addImage("arrow-head", image);
@@ -420,29 +473,62 @@ import BaseHead from "../components/BaseHead.astro";
       }
 
       function createMapVehicleMarkerElement(vehicle: VehicleV1) {
-        const $container = document.createElement("div");
-        $container.id = `vehicle-marker-${MARKER_ID++}`;
-        $container.dataset.id = vehicle.id.toString();
-        $container.dataset.routeId = vehicle.routeId.toString();
-        $container.dataset.tripId = vehicle.tripId;
+        const $name = document.createElement("div");
+        {
+          $name.classList.add("vehicle-marker-name");
+          $name.textContent = vehicle.routeId.toString();
+        }
+
+        const $arrowContainer = document.createElement("div");
+        {
+          $arrowContainer.classList.add("vehicle-marker-arrow-container");
+
+          const $arrow = document.createElement("div");
+          {
+            $arrow.classList.add("vehicle-marker-arrow");
+            // $arrow.innerHTML = "&rarr;";
+            // $arrow.innerHTML = "&#10140;";
+          }
+
+          $arrowContainer.appendChild($arrow);
+        }
 
         const $marker = document.createElement("div");
-        $marker.classList.add("vehicle-marker");
-        if (vehicle.routeId.toString().length > 2) {
-          $marker.style.backgroundColor = "blue";
-        }
-        $marker.addEventListener("click", () => {
-          void setFollowingMarker({
-            marker: vehicle.mapEntity!,
-            tripId: vehicle.tripId,
+        {
+          $marker.classList.add("vehicle-marker");
+          if (vehicle.routeId.toString().length > 2) {
+            $marker.style.setProperty("--theme-color", "blue");
+          } else {
+            $marker.style.setProperty("--theme-color", "red");
+          }
+          $marker.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void setFollowingMarker({
+              marker: vehicle.mapEntity!,
+              tripId: vehicle.tripId,
+            });
           });
-        });
-        $container.appendChild($marker);
 
-        const $name = document.createElement("div");
-        $name.classList.add("vehicle-marker-name");
-        $name.textContent = vehicle.routeId.toString();
-        $marker.appendChild($name);
+          $marker.appendChild($name);
+          $marker.appendChild($arrowContainer);
+        }
+
+        const $container = document.createElement("div");
+        {
+          $container.id = `vehicle-marker-${MARKER_ID++}`;
+          $container.dataset.id = vehicle.id.toString();
+          $container.dataset.routeId = vehicle.routeId.toString();
+          $container.dataset.tripId = vehicle.tripId;
+          if (vehicle.moveAngle) {
+            $container.style.setProperty(
+              "--move-angle",
+              vehicle.moveAngle.toString()
+            );
+          }
+
+          $container.appendChild($marker);
+        }
 
         return $container;
       }
@@ -566,6 +652,22 @@ import BaseHead from "../components/BaseHead.astro";
         if (typeof message.d === "object" && "simpleStops" in message.d) {
           const stops = message.d.simpleStops.map(StopV1.fromSimple);
           console.log("Updating stops");
+
+          let minLat = Infinity;
+          let maxLat = -Infinity;
+          let minLng = Infinity;
+          let maxLng = -Infinity;
+          for (const stop of stops) {
+            minLat = Math.min(minLat, stop.lat);
+            maxLat = Math.max(maxLat, stop.lat);
+            minLng = Math.min(minLng, stop.lng);
+            maxLng = Math.max(maxLng, stop.lng);
+          }
+
+          map.setMaxBounds([
+            [minLng - 0.05, minLat - 0.05],
+            [maxLng + 0.05, maxLat + 0.05],
+          ]);
 
           simpleStops = Object.fromEntries(
             stops.map((stop) => [stop.id, stop])
