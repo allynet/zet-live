@@ -7,7 +7,8 @@ export const BUILD_DATE = new Date(__DATE__);
 
 export const SITE_TITLE = "ZET Live";
 
-export const SITE_DESCRIPTION = "Live info for ZET buses and trams";
+export const SITE_DESCRIPTION =
+  "Trenutni položaj i red vožnje svih javno dostupnih ZET vozila prikazan uživo";
 
 export const SITE_URL = trimUrl(PUBLIC_SITE_URL || import.meta.env.SITE);
 

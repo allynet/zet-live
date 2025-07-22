@@ -2,14 +2,27 @@
 import BaseHead from "../components/BaseHead.astro";
 ---
 
-<html lang="en">
+<html lang="hr-HR">
   <head>
-    <BaseHead title="Live view" />
+    <BaseHead
+      title="Trenutno Stanje"
+      seo={{
+        keywords: [
+          "zet",
+          "live",
+          "live view",
+          "live map",
+          "prikaz uživo",
+          "vozila",
+          "vozila uživo",
+          "trenutni položaj tramvaja",
+          "trenutni položaj autobusa",
+          "gdje je tramvaj",
+          "gdje je autobus",
+        ],
+      }}
+    />
     <link rel="preconnect" href="https://cdn.allypost.net" />
-    <link rel="preconnect" href="https://a.basemaps.cartocdn.com" />
-    <link rel="preconnect" href="https://b.basemaps.cartocdn.com" />
-    <link rel="preconnect" href="https://c.basemaps.cartocdn.com" />
-    <link rel="preconnect" href="https://d.basemaps.cartocdn.com" />
     <link rel="preconnect" href="https://tiles.openfreemap.org" />
     <link
       rel="stylesheet"
