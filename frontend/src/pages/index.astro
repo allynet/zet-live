@@ -198,6 +198,8 @@ import BaseHead from "../components/BaseHead.astro";
           e.features?.find((x) => x.properties?.ids)?.properties?.ids ?? "[]"
         ) as string[];
 
+        followingStopIds = stopIds;
+
         console.log("Only show vehicles that are at stops", stopIds);
         const queryParams = new URLSearchParams();
         for (const stopId of stopIds) {
@@ -246,9 +248,20 @@ import BaseHead from "../components/BaseHead.astro";
       map.on("click", (e) => {
         const clickedOnMapCanvas = e.originalEvent.target === map.getCanvas();
 
-        if (clickedOnMapCanvas) {
-          clearFollowingMarker();
+        if (!clickedOnMapCanvas) {
+          return;
         }
+
+        const clickedOnStop = map
+          .queryRenderedFeatures(e.point)
+          .find((x) => x.source === "route-stops");
+
+        if (clickedOnStop) {
+          return;
+        }
+
+        clearFollowingMarker();
+        followingStopIds = [];
       });
 
       const setDisplayedStops = (
@@ -428,16 +441,33 @@ import BaseHead from "../components/BaseHead.astro";
       }
 
       let followingMarker: MaplibreglMarker | null = null;
+      let followingStopIds: string[] = [];
 
       async function setFollowingMarker(data: {
         marker: MaplibreglMarker;
         tripId?: string;
       }) {
         followingMarker = data.marker;
-        const $followingMarker = followingMarker.getElement();
 
         map.setLayerZoomRange("delta-move-lines", 24, 24);
         map.setLayerZoomRange("delta-move-lines-arrow", 24, 24);
+
+        renderFollowingMarker();
+
+        const tripId =
+          data.tripId || followingMarker.getElement().dataset.tripId;
+
+        if (tripId) {
+          await createCurrentFollowingRouteSource(tripId);
+        }
+      }
+
+      function renderFollowingMarker() {
+        const $followingMarker = followingMarker?.getElement();
+
+        if (!$followingMarker) {
+          return;
+        }
 
         for (const marker of pins.values()) {
           const $marker = marker.getElement();
@@ -450,12 +480,6 @@ import BaseHead from "../components/BaseHead.astro";
 
           $marker.classList.add("not-following");
           $marker.classList.remove("following");
-        }
-
-        const tripId = data.tripId || $followingMarker.dataset.tripId;
-
-        if (tripId) {
-          await createCurrentFollowingRouteSource(tripId);
         }
       }
 
@@ -639,6 +663,8 @@ import BaseHead from "../components/BaseHead.astro";
               },
             })),
           });
+
+          renderFollowingMarker();
         }
 
         if (typeof message.d === "object" && "activeStops" in message.d) {
@@ -746,7 +772,9 @@ import BaseHead from "../components/BaseHead.astro";
                 return { name, lat: avgLat, lng: avgLng, ids };
               });
 
-            setDisplayedStops(stopsGrouped);
+            if (!followingMarker && followingStopIds.length === 0) {
+              setDisplayedStops(stopsGrouped);
+            }
 
             console.log(
               "Stops by distance calculated in",
