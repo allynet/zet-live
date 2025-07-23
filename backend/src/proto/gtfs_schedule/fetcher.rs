@@ -1,31 +1,16 @@
 use std::{string::ToString, sync::Arc, time::Duration};
 
+use libsql::named_params;
 use once_cell::sync::Lazy;
-use tokio::sync::{Notify, RwLock};
-use tracing::{debug, trace, warn};
+use tokio::sync::Notify;
+use tracing::{debug, error, trace, warn};
 
-use crate::{cli::Config, proto::gtfs_schedule::data::GtfsSchedule};
+use crate::{cli::Config, database::Database, proto::gtfs_schedule::data::GtfsSchedule};
 
-static GTFS_SCHEDULE: Lazy<RwLock<Option<Arc<GtfsSchedule>>>> = Lazy::new(|| RwLock::new(None));
 static DATA_NOTIFICATION: Lazy<Arc<Notify>> = Lazy::new(|| Arc::new(Notify::new()));
-static LAST_FETCH_INFO: Lazy<RwLock<FetchInfo>> = Lazy::new(|| RwLock::new(FetchInfo::default()));
 
-#[derive(Debug, Default)]
-struct FetchInfo {
-    modified: Option<chrono::DateTime<chrono::FixedOffset>>,
-    etag: Option<String>,
-}
-
-pub async fn get_cached_schedule() -> Option<Arc<GtfsSchedule>> {
-    GTFS_SCHEDULE.read().await.clone()
-}
-
-pub async fn wait_for_schedule_update() -> Arc<GtfsSchedule> {
+pub async fn wait_for_schedule_update() {
     DATA_NOTIFICATION.notified().await;
-
-    get_cached_schedule()
-        .await
-        .expect("Schedule should be present")
 }
 
 #[tracing::instrument(name = "schedule_fetcher")]
@@ -62,18 +47,19 @@ pub enum FetcherError {
     JoinBlocking(#[from] tokio::task::JoinError),
     #[error("Failed to parse file: {0:?}")]
     Parse(#[from] super::data::FileDataError),
+    #[error("Got database error: {0:?}")]
+    Database(#[from] libsql::errors::Error),
 }
 
 async fn fetch_and_update_schedule() -> Result<(), FetcherError> {
-    let schedule = fetch_newer_schedule().await?;
-    if let Some(schedule) = schedule {
-        GTFS_SCHEDULE.write().await.replace(Arc::new(schedule));
-        DATA_NOTIFICATION.notify_waiters();
-    }
+    fetch_newer_schedule().await?;
+    trace!("Got newer schedule");
+    DATA_NOTIFICATION.notify_waiters();
     Ok(())
 }
 
-async fn fetch_newer_schedule() -> Result<Option<GtfsSchedule>, FetcherError> {
+#[tracing::instrument(skip_all)]
+async fn fetch_newer_schedule() -> Result<Option<()>, FetcherError> {
     let url = Config::global()
         .global
         .data_fetcher
@@ -97,46 +83,75 @@ async fn fetch_newer_schedule() -> Result<Option<GtfsSchedule>, FetcherError> {
 
     trace!(headers = ?response.headers(), "Got metadata response.");
 
-    {
-        let modified = response
+    let modified = {
+        let x = response
             .headers()
             .get("last-modified")
             .and_then(|x| x.to_str().ok())
-            .and_then(|x| chrono::DateTime::parse_from_rfc2822(x).ok());
+            .and_then(|x| chrono::DateTime::parse_from_rfc2822(x).ok())
+            .map_or_else(chrono::Utc::now, |x| x.to_utc());
 
-        let etag = response
-            .headers()
-            .get("etag")
-            .and_then(|x| x.to_str().ok())
-            .map(ToString::to_string);
+        #[allow(clippy::cast_precision_loss)]
+        let time = x.timestamp() as f64;
 
-        let last_fetch_info = LAST_FETCH_INFO.read().await;
-        let last_modified_is_newer = match (last_fetch_info.modified, modified) {
-            (Some(last_modified), Some(modified)) => last_modified < modified,
-            (None, Some(_) | None) => true,
-            (Some(_), None) => false,
-        };
-        let etag_changed = match (last_fetch_info.etag.clone(), etag.clone()) {
-            (Some(last_etag), Some(etag)) => last_etag != etag,
-            _ => true,
-        };
-        if !last_modified_is_newer && !etag_changed {
-            return Ok(None);
-        }
-        drop(last_fetch_info);
+        time + f64::from(x.timestamp_subsec_millis()) / 1_000.0
+    };
 
-        let mut last_fetch_info = LAST_FETCH_INFO.write().await;
-        last_fetch_info.modified = modified;
-        last_fetch_info.etag = etag;
+    let etag = response
+        .headers()
+        .get("etag")
+        .and_then(|x| x.to_str().ok())
+        .map(ToString::to_string);
+
+    trace!(?modified, ?etag, "Got schedule metadata");
+
+    let res = Database::conn()
+        .query(
+            "select * from gtfs_schedule_meta where (last_modified >= :modified) or (etag = \
+             :etag) limit 1",
+            named_params! {
+                ":modified": modified,
+                ":etag": etag.clone(),
+            },
+        )
+        .await
+        .map_err(FetcherError::Database)?
+        .next()
+        .await
+        .map_err(FetcherError::Database)?
+        .is_some();
+
+    trace!(have_data = ?res, "Checking schedule metadata");
+
+    if res {
+        trace!("Schedule is up to date");
+        return Ok(None);
     }
+
+    trace!("Schedule is newer");
 
     let zip_body = response.bytes().await.map_err(FetcherError::Fetch)?;
 
     trace!(len = ?zip_body.len(), "Got zip body");
 
-    let schedule = GtfsSchedule::read_from_zip_bytes(zip_body)
+    GtfsSchedule::read_from_zip_bytes(zip_body)
         .await
         .map_err(FetcherError::Parse)?;
 
-    Ok(Some(schedule))
+    debug!("Schedule read to database, committing metadata");
+
+    Database::conn()
+        .execute(
+            "insert into gtfs_schedule_meta (last_modified, etag) values (:last_modified, :etag)",
+            named_params! {
+                ":last_modified": modified,
+                ":etag": etag,
+            },
+        )
+        .await
+        .map_err(FetcherError::Database)?;
+
+    debug!("Schedule updated");
+
+    Ok(Some(()))
 }

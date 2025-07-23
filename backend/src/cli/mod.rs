@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use clap::{CommandFactory, Parser, ValueEnum};
 use clap_complete::Shell;
@@ -104,7 +104,7 @@ pub struct DataFetcherConfig {
     #[clap(
         long,
         value_parser = Timeframe::parse_str,
-        default_value = "1 hour",
+        default_value = "2 minutes",
         env = "ZI_SCHEDULE_FETCH_INTERVAL"
     )]
     pub schedule_fetch_interval: Timeframe,
@@ -127,12 +127,96 @@ pub struct ServerConfig {
     /// or `127.0.0.1` if you don't want to expose the server to the outside world.
     #[clap(short = 'H', long, default_value = "0.0.0.0", env = "HOST")]
     pub host: String,
+
+    /// The libsql database URL to use.
+    ///
+    /// Should be a valid database URL, such as `sqlite:./db.sqlite`.
+    #[clap(long, default_value = ":memory:", env = "DATABASE_URL", value_parser = DatabaseUrl::try_from_string)]
+    pub database_url: DatabaseUrl,
 }
 impl ServerConfig {
     pub fn address(&self) -> Result<std::net::SocketAddr, std::net::AddrParseError> {
         let host = self.host.parse::<std::net::IpAddr>()?;
 
         Ok(std::net::SocketAddr::new(host, self.port))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum DatabaseUrl {
+    Memory,
+    Local(PathBuf),
+    Remote {
+        url: url::Url,
+        token: Option<String>,
+    },
+}
+impl DatabaseUrl {
+    fn try_from_string(s: &str) -> Result<Self, String> {
+        if s == ":memory:" {
+            return Ok(Self::Memory);
+        }
+
+        match url::Url::parse(s) {
+            Ok(mut url) => {
+                match url.scheme() {
+                    "sqlite" | "sqlite3" | "file" => {
+                        return Ok(Self::Local(PathBuf::from(url.path())));
+                    }
+                    "http" | "https" | "libsql" | "ws" | "wss" => {}
+                    _ => {
+                        return Err("Invalid database URL scheme".into());
+                    }
+                }
+
+                let query_params = url.query_pairs().collect::<Vec<_>>();
+
+                let token_pair = query_params
+                    .iter()
+                    .filter(|x| !x.1.is_empty())
+                    .find(|x| {
+                        matches!(
+                            x.0.to_lowercase().as_str(),
+                            "token" | "auth_token" | "authtoken"
+                        )
+                    })
+                    .map(|x| (x.0.to_string(), x.1.to_string()));
+
+                if let Some((token_name, _)) = token_pair.as_ref() {
+                    let cleaned_pairs = query_params
+                        .iter()
+                        .filter(|x| &x.0 != token_name)
+                        .map(|(x, y)| (x.to_string(), y.to_string()))
+                        .collect::<Vec<_>>();
+
+                    url.query_pairs_mut().clear().extend_pairs(cleaned_pairs);
+                }
+
+                let token = if let Some((_, token)) = token_pair {
+                    Some(token)
+                } else {
+                    None
+                };
+
+                Ok(Self::Remote { url, token })
+            }
+            Err(_) => Ok(Self::Local(PathBuf::from(s))),
+        }
+    }
+}
+impl std::fmt::Display for DatabaseUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Memory => write!(f, ":memory:"),
+            Self::Local(path) => write!(f, "file://{}", path.display()),
+            Self::Remote { url, token } => {
+                let mut url = url.clone();
+                if let Some(token) = token {
+                    url.query_pairs_mut().extend_pairs([("token", token)]);
+                }
+                write!(f, "{}", url)
+            }
+        }
     }
 }
 

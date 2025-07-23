@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use super::{FileData, WheelchairBoarding};
+use crate::proto::gtfs_schedule::data::QueryData;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,6 +39,61 @@ pub struct Trip {
 impl FileData for Trip {
     fn file_name() -> &'static str {
         "trips.txt"
+    }
+
+    fn table_name() -> &'static str {
+        "gtfs_trips"
+    }
+
+    fn into_insert_query(self) -> QueryData {
+        let query = "
+        insert into
+            gtfs_trips
+                ( trip_id
+                , route_id
+                , service_id
+                , trip_headsign
+                , trip_short_name
+                , direction_id
+                , block_id
+                , shape_id
+                , wheelchair_boarding
+                , bikes_allowed
+                )
+            values
+                ( :trip_id
+                , :route_id
+                , :service_id
+                , :trip_headsign
+                , :trip_short_name
+                , :direction_id
+                , :block_id
+                , :shape_id
+                , :wheelchair_boarding
+                , :bikes_allowed
+                )
+        ";
+
+        let params = libsql::named_params! {
+            ":trip_id": self.id.to_string(),
+            ":route_id": self.route_id,
+            ":service_id": self.service_id,
+            ":trip_headsign": self.headsign,
+            ":trip_short_name": self.short_name,
+            ":direction_id": self.direction_id.map(|x| x as u8),
+            ":block_id": self.block_id,
+            ":shape_id": self.shape_id,
+            ":wheelchair_boarding": self.wheelchair_boarding as u8,
+            ":bikes_allowed": self.bikes_allowed as u8,
+        }
+        .into_iter()
+        .map(|(x, y)| (x.to_string(), y))
+        .collect::<Vec<_>>();
+
+        QueryData {
+            query: query.to_string(),
+            params,
+        }
     }
 }
 

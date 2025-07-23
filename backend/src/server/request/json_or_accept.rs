@@ -30,15 +30,12 @@ where
             .and_then(|mut x| x.find(|x| x == &"application/json" || x == &"application/cbor"))
             .unwrap_or("application/json")
             .parse::<Accept>();
-        let accept = match accept {
-            Ok(accept) => accept,
-            Err(_) => {
-                return (
-                    StatusCode::NOT_ACCEPTABLE,
-                    [(header::CONTENT_TYPE, HeaderValue::from_static("text/plain"))],
-                )
-                    .into_response();
-            }
+        let Ok(accept) = accept else {
+            return (
+                StatusCode::NOT_ACCEPTABLE,
+                [(header::CONTENT_TYPE, HeaderValue::from_static("text/plain"))],
+            )
+                .into_response();
         };
 
         let cbor: Mime = APPLICATION_CBOR.clone();

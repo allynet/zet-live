@@ -2,6 +2,7 @@ use cli::{CliCommands, Config};
 use tracing::{error, info, trace, warn};
 
 mod cli;
+mod database;
 mod entity;
 mod logger;
 mod proto;

@@ -17,10 +17,12 @@ impl<T> Versioned<T> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn new_now(version: u64, data: T) -> Self {
         Self::new(version, data).with_timestamp_now()
     }
 
+    #[allow(dead_code)]
     pub const fn new_with_timestamp(version: u64, timestamp: u64, data: T) -> Self {
         Self {
             version,

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use super::FileData;
-use crate::entity::util::mixed_value::MixedValue;
+use crate::{entity::util::mixed_value::MixedValue, proto::gtfs_schedule::data::QueryData};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,12 +46,81 @@ impl FileData for Stop {
     fn file_name() -> &'static str {
         "stops.txt"
     }
+
+    fn table_name() -> &'static str {
+        "gtfs_stops"
+    }
+
+    fn into_insert_query(self) -> QueryData {
+        let query = "
+        insert into
+            gtfs_stops
+                ( stop_id
+                , stop_code
+                , stop_name
+                , tts_stop_name
+                , latitude
+                , longitude
+                , zone_id
+                , stop_url
+                , location_type
+                , parent_station
+                , stop_timezone
+                , wheelchair_boarding
+                , level_id
+                , platform_code
+                )
+            values
+                ( :stop_id
+                , :stop_code
+                , :stop_name
+                , :tts_stop_name
+                , :latitude
+                , :longitude
+                , :zone_id
+                , :stop_url
+                , :location_type
+                , :parent_station
+                , :stop_timezone
+                , :wheelchair_boarding
+                , :level_id
+                , :platform_code
+                )
+        ";
+
+        let params = libsql::named_params! {
+            ":stop_id": self.id.to_string(),
+            ":stop_code": self.code,
+            ":stop_name": self.name,
+            ":tts_stop_name": self.tts_name,
+            ":latitude": self.latitude,
+            ":longitude": self.longitude,
+            ":zone_id": self.zone_id,
+            ":stop_url": self.url.map(|x| x.to_string()),
+            ":location_type": self.location_type.map(|x| x as u8),
+            ":parent_station": self.parent_station,
+            ":stop_timezone": self.timezone,
+            ":wheelchair_boarding": self.wheelchair_boarding as u8,
+            ":level_id": self.level_id,
+            ":platform_code": self.platform_code,
+        }
+        .into_iter()
+        .map(|(x, y)| (x.to_string(), y))
+        .collect::<Vec<_>>();
+
+        QueryData {
+            query: query.to_string(),
+            params,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SimpleStop {
+    #[serde(alias = "stop_id")]
     pub id: String,
+    #[serde(alias = "stop_name")]
     pub name: String,
     pub latitude: f32,
     pub longitude: f32,

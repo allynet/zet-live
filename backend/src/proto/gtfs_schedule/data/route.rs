@@ -4,14 +4,15 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use super::FileData;
+use crate::proto::gtfs_schedule::data::QueryData;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Route {
     #[serde(alias = "route_id")]
-    pub id: u32,
+    pub id: String,
     #[serde(alias = "agency_id")]
-    pub agency_id: Option<u32>,
+    pub agency_id: Option<String>,
     #[serde(alias = "route_short_name")]
     pub short_name: Option<String>,
     #[serde(alias = "route_long_name")]
@@ -43,6 +44,58 @@ pub struct Route {
 impl FileData for Route {
     fn file_name() -> &'static str {
         "routes.txt"
+    }
+
+    fn table_name() -> &'static str {
+        "gtfs_routes"
+    }
+
+    fn into_insert_query(self) -> QueryData {
+        let query = "
+        insert into
+            gtfs_routes
+                ( route_id
+                , agency_id
+                , route_short_name
+                , route_long_name
+                , route_url
+                , route_desc
+                , route_type
+                , route_color
+                , route_text_color
+                )
+            values
+                ( :route_id
+                , :agency_id
+                , :route_short_name
+                , :route_long_name
+                , :route_url
+                , :route_desc
+                , :route_type
+                , :route_color
+                , :route_text_color
+                )
+        ";
+
+        let params = libsql::named_params! {
+            ":route_id": self.id.to_string(),
+            ":agency_id": self.agency_id,
+            ":route_short_name": self.short_name,
+            ":route_long_name": self.long_name,
+            ":route_url": self.url.map(|x| x.to_string()),
+            ":route_desc": self.desc,
+            ":route_type": self.route_type as u8,
+            ":route_color": self.color,
+            ":route_text_color": self.text_color,
+        }
+        .into_iter()
+        .map(|(x, y)| (x.to_string(), y))
+        .collect::<Vec<_>>();
+
+        QueryData {
+            query: query.to_string(),
+            params,
+        }
     }
 }
 
