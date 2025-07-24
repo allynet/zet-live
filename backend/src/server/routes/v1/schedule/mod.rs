@@ -66,6 +66,8 @@ pub async fn get_stop(headers: HeaderMap, Path(id): Path<String>) -> impl IntoRe
 pub async fn get_simple_stops(headers: HeaderMap) -> impl IntoResponse {
     let stops = {
         let Ok(mut rows) = Database::conn()
+            .lock()
+            .await
             .query("SELECT * FROM gtfs_stops", libsql::params![])
             .await
         else {
@@ -105,6 +107,8 @@ pub async fn get_stop_trips(
     let start = Instant::now();
     let stop_trips = {
         let trip_ids = Database::conn()
+            .lock()
+            .await
             .query(
                 &format!(
                     "

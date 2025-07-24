@@ -3,6 +3,7 @@ use std::sync::Arc;
 use include_dir::{Dir, include_dir};
 use libsql::Builder;
 use once_cell::sync::OnceCell;
+use tokio::sync::Mutex;
 use tracing::{debug, error, trace};
 
 use crate::cli::DatabaseUrl;
@@ -13,7 +14,7 @@ static MIGRATIONS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/database/migr
 static DATABASE: OnceCell<Arc<Database>> = OnceCell::new();
 
 pub struct Database {
-    conn: libsql::Connection,
+    conn: Arc<Mutex<libsql::Connection>>,
 }
 impl Database {
     pub async fn init(url: &DatabaseUrl) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
@@ -56,7 +57,9 @@ impl Database {
         .await?;
         trace!("Database setup complete");
 
-        let database = Self { conn };
+        let database = Self {
+            conn: Arc::new(Mutex::new(conn)),
+        };
         database.run_migrations().await?;
 
         DATABASE
@@ -87,6 +90,8 @@ impl Database {
             debug!(name = ?migration.path(), "Running migration");
             let content = format!("begin transaction; {}; commit;", content);
             self.conn
+                .lock()
+                .await
                 .execute_batch(&content)
                 .await
                 .map_err(|e| format!("Failed to run migration {:?}: {}", migration.path(), e))?;
@@ -101,7 +106,7 @@ impl Database {
         DATABASE.get().expect("Database not initialized").clone()
     }
 
-    pub fn conn() -> libsql::Connection {
+    pub fn conn() -> Arc<Mutex<libsql::Connection>> {
         Self::global().conn.clone()
     }
 
@@ -109,7 +114,7 @@ impl Database {
         query: &str,
         params: impl libsql::params::IntoParams,
     ) -> Result<Vec<T>, DatabaseError> {
-        let mut rows = Self::conn().query(query, params).await?;
+        let mut rows = Self::conn().lock().await.query(query, params).await?;
         let mut results = vec![];
         while let Ok(Some(row)) = rows.next().await {
             let result = libsql::de::from_row::<T>(&row)?;
@@ -122,7 +127,7 @@ impl Database {
         query: &str,
         params: impl libsql::params::IntoParams,
     ) -> Result<Option<T>, DatabaseError> {
-        let mut rows = Self::conn().query(query, params).await?;
+        let mut rows = Self::conn().lock().await.query(query, params).await?;
         let Ok(Some(row)) = rows.next().await else {
             return Ok(None);
         };
@@ -134,7 +139,7 @@ impl Database {
         query: &str,
         params: impl libsql::params::IntoParams,
     ) -> Result<Vec<libsql::Value>, DatabaseError> {
-        let mut rows = Self::conn().query(query, params).await?;
+        let mut rows = Self::conn().lock().await.query(query, params).await?;
         let mut results = vec![];
         while let Ok(Some(row)) = rows.next().await {
             if let Ok(val) = row.get_value(0) {
