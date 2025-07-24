@@ -510,8 +510,6 @@ import BaseHead from "../components/BaseHead.astro";
           const $arrow = document.createElement("div");
           {
             $arrow.classList.add("vehicle-marker-arrow");
-            // $arrow.innerHTML = "&rarr;";
-            // $arrow.innerHTML = "&#10140;";
           }
 
           $arrowContainer.appendChild($arrow);
@@ -520,17 +518,12 @@ import BaseHead from "../components/BaseHead.astro";
         const $marker = document.createElement("div");
         {
           $marker.classList.add("vehicle-marker");
-          if (vehicle.routeId.toString().length > 2) {
-            $marker.style.setProperty("--theme-color", "blue");
-          } else {
-            $marker.style.setProperty("--theme-color", "red");
-          }
           $marker.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
             void setFollowingMarker({
               marker: vehicle.mapEntity!,
-              tripId: vehicle.tripId,
+              tripId: $container.dataset.tripId,
             });
           });
 
@@ -541,20 +534,38 @@ import BaseHead from "../components/BaseHead.astro";
         const $container = document.createElement("div");
         {
           $container.id = `vehicle-marker-${MARKER_ID++}`;
-          $container.dataset.id = vehicle.id.toString();
-          $container.dataset.routeId = vehicle.routeId.toString();
-          $container.dataset.tripId = vehicle.tripId;
-          if (vehicle.moveAngle) {
-            $container.style.setProperty(
-              "--move-angle",
-              vehicle.moveAngle.toString()
-            );
-          }
-
           $container.appendChild($marker);
         }
 
+        updateMapVehicleMarkerElement(vehicle, $container);
+
         return $container;
+      }
+
+      function updateMapVehicleMarkerElement(
+        vehicle: VehicleV1,
+        $container: HTMLElement
+      ) {
+        $container.dataset.id = vehicle.id.toString();
+        $container.dataset.routeId = vehicle.routeId.toString();
+        $container.dataset.tripId = vehicle.tripId;
+        if (vehicle.moveAngle) {
+          $container.style.setProperty(
+            "--move-angle",
+            vehicle.moveAngle.toString()
+          );
+        } else {
+          $container.style.removeProperty("--move-angle");
+        }
+
+        const $marker = $container.querySelector(
+          ".vehicle-marker"
+        )! as HTMLElement;
+        if (vehicle.routeId.toString().length > 2) {
+          $marker.style.setProperty("--theme-color", "blue");
+        } else {
+          $marker.style.setProperty("--theme-color", "red");
+        }
       }
 
       function connectWebSocket() {
@@ -606,6 +617,15 @@ import BaseHead from "../components/BaseHead.astro";
 
       const pins = new Map<unknown, MaplibreglMarker>();
 
+      let stopBounds = [
+        [-Infinity, -Infinity],
+        [Infinity, Infinity],
+      ] as [[number, number], [number, number]];
+      let vehicleBounds = [
+        [-Infinity, -Infinity],
+        [Infinity, Infinity],
+      ] as [[number, number], [number, number]];
+
       function processMessage(message: V1Message) {
         if (typeof message.d === "object" && "vehicles" in message.d) {
           const locationPairs = [] as {
@@ -615,6 +635,11 @@ import BaseHead from "../components/BaseHead.astro";
           }[];
           const vehicles = message.d.vehicles.map(VehicleV1.fromSimple);
 
+          let minLat = Infinity;
+          let maxLat = -Infinity;
+          let minLng = Infinity;
+          let maxLng = -Infinity;
+
           // Update existing vehicles and add new ones
           for (const v of vehicles) {
             const pin = pins.get(v.getMapId());
@@ -622,7 +647,11 @@ import BaseHead from "../components/BaseHead.astro";
 
             const loc = vehicle.mapEntity?.getLngLat()?.toArray();
 
-            vehicle.updateMapEntity(map, createMapVehicleMarkerElement);
+            vehicle.updateMapEntity(
+              map,
+              createMapVehicleMarkerElement,
+              updateMapVehicleMarkerElement
+            );
 
             if (loc) {
               locationPairs.push({
@@ -632,12 +661,33 @@ import BaseHead from "../components/BaseHead.astro";
               });
             }
 
+            minLat = Math.min(minLat, vehicle.lat);
+            maxLat = Math.max(maxLat, vehicle.lat);
+            minLng = Math.min(minLng, vehicle.lng);
+            maxLng = Math.max(maxLng, vehicle.lng);
+
             pins.set(vehicle.getMapId(), vehicle.mapEntity!);
 
             if (vehicle.mapEntity === followingMarker) {
               void createCurrentFollowingRouteSource(vehicle.tripId);
             }
           }
+
+          vehicleBounds = [
+            [minLng, minLat],
+            [maxLng, maxLat],
+          ];
+
+          map.setMaxBounds([
+            [
+              Math.min(stopBounds[0][0], vehicleBounds[0][0]) - 0.05,
+              Math.min(stopBounds[0][1], vehicleBounds[0][1]) - 0.05,
+            ],
+            [
+              Math.max(stopBounds[1][0], vehicleBounds[1][0]) + 0.05,
+              Math.max(stopBounds[1][1], vehicleBounds[1][1]) + 0.05,
+            ],
+          ]);
 
           const ids = vehicles.map((v) => v.getMapId());
           const idSet = new Set(ids);
@@ -689,10 +739,20 @@ import BaseHead from "../components/BaseHead.astro";
             minLng = Math.min(minLng, stop.lng);
             maxLng = Math.max(maxLng, stop.lng);
           }
+          stopBounds = [
+            [minLng, minLat],
+            [maxLng, maxLat],
+          ];
 
           map.setMaxBounds([
-            [minLng - 0.05, minLat - 0.05],
-            [maxLng + 0.05, maxLat + 0.05],
+            [
+              Math.min(stopBounds[0][0], vehicleBounds[0][0]) - 0.05,
+              Math.min(stopBounds[0][1], vehicleBounds[0][1]) - 0.05,
+            ],
+            [
+              Math.max(stopBounds[1][0], vehicleBounds[1][0]) + 0.05,
+              Math.max(stopBounds[1][1], vehicleBounds[1][1]) + 0.05,
+            ],
           ]);
 
           simpleStops = Object.fromEntries(

@@ -65,7 +65,8 @@ export class VehicleV1<
 
   public updateMapEntity(
     map: MaplibreglMap,
-    createMapMarkerElement: (vehicle: VehicleV1) => HTMLElement
+    createMapMarkerElement: (vehicle: VehicleV1) => HTMLElement,
+    updateMapMarkerElement: (vehicle: VehicleV1, element: HTMLElement) => void
   ) {
     {
       const prevLoc = this.mapEntity?.getLngLat();
@@ -91,13 +92,7 @@ export class VehicleV1<
 
     entity = entity.setLngLat(this).addTo(map);
 
-    if (this.moveAngle) {
-      entity
-        .getElement()
-        .style.setProperty("--move-angle", this.moveAngle.toString());
-    } else {
-      entity.getElement().style.removeProperty("--move-angle");
-    }
+    updateMapMarkerElement(this, entity.getElement());
 
     return this.setMapEntity(entity);
   }
