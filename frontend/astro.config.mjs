@@ -26,7 +26,10 @@ export default defineConfig({
       PUBLIC_SITE_URL: envField.string({
         context: "client",
         access: "public",
-        default: "https://zet.igr.ec",
+      }),
+      PLAUSIBLE_SITE_URL: envField.string({
+        context: "client",
+        access: "public",
       }),
       PLAUSIBLE_SCRIPT_URL: envField.string({
         context: "client",

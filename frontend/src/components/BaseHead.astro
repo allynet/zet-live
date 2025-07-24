@@ -12,8 +12,8 @@ import {
 } from "../app/consts";
 import type { HTMLAttributes } from "astro/types";
 import {
+  PLAUSIBLE_SITE_URL,
   PLAUSIBLE_SCRIPT_URL,
-  PUBLIC_SITE_URL,
   PLAUSIBLE_API_URL,
 } from "astro:env/client";
 
@@ -147,6 +147,7 @@ const seoData = merge(
     title: title ?? SITE_TITLE,
     titleDefault: SITE_TITLE,
     titleTemplate: `%s | ${SITE_TITLE}`,
+    canonical: new URL(SITE_URL),
     openGraph: {
       basic: {
         type: "website",
@@ -205,7 +206,7 @@ const seoData = merge(
   PLAUSIBLE_SCRIPT_URL ? (
     <script
       defer
-      data-domain={new URL(PUBLIC_SITE_URL).hostname}
+      data-domain={new URL(PLAUSIBLE_SITE_URL || SITE_URL).hostname}
       data-api={PLAUSIBLE_API_URL}
       src={PLAUSIBLE_SCRIPT_URL}
     />

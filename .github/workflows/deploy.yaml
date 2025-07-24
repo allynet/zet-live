@@ -24,9 +24,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Create env file
+        env:
+          PLAUSIBLE_SITE_URL: ${{ vars.PLAUSIBLE_SITE_URL }}
+          PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL }}
+          API_URL: ${{ vars.API_URL }}
         run: |
           echo "PLAUSIBLE_SCRIPT_URL=/pevts/pl-a/js/script.js" > ./frontend/.env.docker
           echo "PLAUSIBLE_API_URL=/pevts/pl-a/api/event" >> ./frontend/.env.docker
+          if [ -n "$PLAUSIBLE_SITE_URL" ]; then echo "PLAUSIBLE_SITE_URL=$PLAUSIBLE_SITE_URL" >> ./frontend/.env.docker; fi
+          if [ -n "$PUBLIC_SITE_URL" ]; then echo "PUBLIC_SITE_URL=$PUBLIC_SITE_URL" >> ./frontend/.env.docker; fi
+          if [ -n "$API_URL" ]; then echo "API_URL=$API_URL" >> ./frontend/.env.docker; fi
+          cat ./frontend/.env.docker
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
