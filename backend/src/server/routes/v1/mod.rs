@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc, time::Instant};
+use std::{collections::HashSet, fmt::Write, sync::Arc, time::Instant};
 
 use _entity::vehicle::Vehicle;
 use axum::{Router, routing::get};
@@ -88,36 +88,51 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 .map(|x| x.trip_id().to_string())
                 .collect::<HashSet<_>>();
 
-            let (sel, params) = if current_feed_trip_ids.len() > 20_000 {
-                (
-                    "select value from json_each(?)".to_string(),
-                    vec![
-                        serde_json::to_string(&current_feed_trip_ids)
-                            .expect("Failed to serialize trip ids"),
-                    ],
-                )
-            } else {
-                (
-                    (0..current_feed_trip_ids.len())
-                        .map(|_| "?")
-                        .collect::<Vec<_>>()
-                        .join(","),
-                    current_feed_trip_ids.into_iter().collect::<Vec<_>>(),
-                )
+            trace!(current_feed_trips = ?current_feed_trip_ids.len(), "Updating active trips");
+            let stmts_start = Instant::now();
+            let stmts = {
+                let mut stmts = String::new();
+
+                stmts.push_str("delete from live_trips;\n");
+                for trip_id in &current_feed_trip_ids {
+                    let res = writeln!(
+                        stmts,
+                        "insert into live_trips (trip_id) values ('{}');",
+                        trip_id.replace('\'', "''")
+                    );
+
+                    if let Err(e) = res {
+                        error!(?e, "Failed to write to stmts");
+                        return;
+                    }
+                }
+
+                stmts
             };
 
+            trace!(took = ?stmts_start.elapsed(), "Built batch statements for active trips");
+
+            if let Err(e) = Database::conn()
+                .lock()
+                .await
+                .execute_transactional_batch(&stmts)
+                .await
+            {
+                error!(?e, "Failed to execute batch statements for active trips");
+                return;
+            }
+
+            trace!(took = ?stmts_start.elapsed(), "Updated active trips");
+
             let active_stop_ids = Database::query_first_columns(
-                &format!(
-                    "
-                        SELECT
-                            DISTINCT stop_id
-                        FROM
-                            gtfs_stop_times
-                        WHERE
-                            trip_id in ({sel})
-                        "
-                ),
-                params,
+                "
+                SELECT
+                    DISTINCT stop_id
+                FROM live_trips lt
+                LEFT JOIN gtfs_stop_times gst
+                    ON lt.trip_id = gst.trip_id
+                ",
+                libsql::params![],
             )
             .await;
             let active_stop_ids = match active_stop_ids {
@@ -164,13 +179,69 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
     let vehicles_feed = feed;
     let vehicles_app_state = app_state;
     tokio::task::spawn(async move {
+        let vehicles = vehicles_feed
+            .entity
+            .iter()
+            .filter_map(|x| x.vehicle.as_ref())
+            .filter_map(|x| Vehicle::try_from(x).ok())
+            .collect::<Vec<_>>();
+
+        trace!(current_vehicles = ?vehicles.len(), "Updating vehicles");
+        let stmts_start = Instant::now();
+        let stmts = {
+            let mut stmts = String::new();
+
+            stmts.push_str("delete from live_vehicles;\n");
+            for vehicle in &vehicles {
+                let res = writeln!(
+                    stmts,
+                    "INSERT INTO live_vehicles
+                    ( vehicle_id
+                    , route_id
+                    , trip_id
+                    , latitude
+                    , longitude
+                    ) values
+                    ( '{}'
+                    , '{}'
+                    , '{}'
+                    , {}
+                    , {}
+                    );",
+                    vehicle.id.replace('\'', "''"),
+                    vehicle.route_id.replace('\'', "''"),
+                    vehicle.trip_id.replace('\'', "''"),
+                    vehicle.latitude,
+                    vehicle.longitude,
+                );
+
+                if let Err(e) = res {
+                    error!(?e, "Failed to write to stmts");
+                    return;
+                }
+            }
+
+            stmts
+        };
+
+        trace!(took = ?stmts_start.elapsed(), "Built batch statements for vehicles");
+
+        if let Err(e) = Database::conn()
+            .lock()
+            .await
+            .execute_transactional_batch(&stmts)
+            .await
+        {
+            error!(?e, "Failed to execute batch statements for vehicles");
+            return;
+        }
+
+        trace!(took = ?stmts_start.elapsed(), "Updated vehicles");
+
         let vehicles = tokio::task::spawn_blocking(move || {
-            let simple_vehicles_feed = vehicles_feed
-                .entity
+            let simple_vehicles_feed = vehicles
                 .iter()
-                .filter_map(|x| x.vehicle.as_ref())
-                .filter_map(|x| Vehicle::try_from(x).ok())
-                .map(|x| x.to_simple())
+                .map(_entity::vehicle::Vehicle::to_simple)
                 .collect::<Vec<_>>();
 
             let vehicles = Versioned::new(1, Broadcast::Vehicles(simple_vehicles_feed));

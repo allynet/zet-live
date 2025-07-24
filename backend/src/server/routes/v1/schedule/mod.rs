@@ -68,7 +68,16 @@ pub async fn get_simple_stops(headers: HeaderMap) -> impl IntoResponse {
         let Ok(mut rows) = Database::conn()
             .lock()
             .await
-            .query("SELECT * FROM gtfs_stops", libsql::params![])
+            .query(
+                "
+                SELECT DISTINCT
+                    s.stop_id, s.stop_name, s.longitude, s.latitude
+                FROM live_trips lt
+                LEFT JOIN gtfs_stop_times st on st.trip_id = lt.trip_id
+                LEFT JOIN gtfs_stops s on s.stop_id = st.stop_id
+                ",
+                libsql::params![],
+            )
             .await
         else {
             error!("Failed to get stops");
@@ -115,7 +124,7 @@ pub async fn get_stop_trips(
                     SELECT
                         DISTINCT t.trip_id
                     FROM
-                        gtfs_trips t
+                        live_trips t
                         LEFT JOIN gtfs_stop_times st on st.trip_id = t.trip_id
                     WHERE
                         st.stop_id in ({})
@@ -220,7 +229,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
         async {
             if let Some(shape_id) = shape_id {
                 Database::query::<Shape>(
-                    "SELECT * FROM gtfs_shapes WHERE shape_id = ?",
+                    "SELECT * FROM gtfs_shapes WHERE shape_id = ? order by shape_pt_sequence",
                     libsql::params![shape_id.clone()],
                 )
                 .await

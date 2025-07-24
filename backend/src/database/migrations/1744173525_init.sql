@@ -172,6 +172,7 @@ CREATE TABLE IF NOT EXISTS gtfs_shapes (
   --NOT NULL,
   shape_dist_traveled REAL
 ) strict;
+CREATE INDEX IF NOT EXISTS idx_gtfs_shapes__shape_id__shape_pt_sequence ON gtfs_shapes(shape_id, shape_pt_sequence);
 CREATE TABLE IF NOT EXISTS gtfs_trips (
   trip_id TEXT PRIMARY KEY,
   route_id INTEGER,

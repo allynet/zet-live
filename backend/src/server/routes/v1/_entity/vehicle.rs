@@ -3,10 +3,14 @@ use crate::{
     proto::gtfs_realtime::data::transit_realtime::VehiclePosition,
 };
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Vehicle {
+    #[serde(alias = "vehicle_id")]
     pub id: String,
+    #[serde(alias = "route_id")]
     pub route_id: String,
+    #[serde(alias = "trip_id")]
     pub trip_id: String,
     pub latitude: f32,
     pub longitude: f32,
