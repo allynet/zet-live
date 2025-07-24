@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use once_cell::sync::Lazy;
 use prost::Message;
@@ -20,6 +23,7 @@ pub async fn fetch_feed() -> Result<FeedMessage, FetcherError> {
 
     debug!(url = ?url.as_str(), "Fetching feed");
 
+    let start = Instant::now();
     let response = reqwest::Client::builder()
         .build()
         .map_err(FetcherError::FetchError)?
@@ -33,13 +37,17 @@ pub async fn fetch_feed() -> Result<FeedMessage, FetcherError> {
         return Err(FetcherError::FetchError(e));
     }
 
-    trace!("Feed fetched successfully");
+    trace!(took = ?start.elapsed(), "Got feed response");
 
+    let start_read = Instant::now();
     let body = response.bytes().await.map_err(FetcherError::FetchError)?;
+    trace!(took = ?start_read.elapsed(), "Read feed body");
 
+    let start_decode = Instant::now();
     let data = FeedMessage::decode(body).map_err(FetcherError::DecodeError)?;
+    trace!(?data.header, took = ?start_decode.elapsed(), "Feed decoded successfully");
 
-    trace!(?data.header, "Feed decoded successfully");
+    trace!(took = ?start.elapsed(), "Feed fetched successfully");
 
     Ok(data)
 }

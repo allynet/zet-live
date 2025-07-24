@@ -9,9 +9,9 @@ pub struct StopTime {
     #[serde(alias = "trip_id")]
     pub trip_id: String,
     #[serde(alias = "arrival_time")]
-    pub arrival_time: Option<chrono::NaiveTime>,
+    pub arrival_time: Option<String>,
     #[serde(alias = "departure_time")]
-    pub departure_time: Option<chrono::NaiveTime>,
+    pub departure_time: Option<String>,
     #[serde(alias = "stop_id")]
     pub stop_id: String,
     #[serde(alias = "stop_sequence")]
@@ -58,8 +58,8 @@ impl FileData for StopTime {
             ":trip_id": self.trip_id.to_string(),
             ":stop_id": self.stop_id.to_string(),
             ":stop_sequence": self.stop_sequence,
-            ":arrival_time": self.arrival_time.map(|x| x.to_string()),
-            ":departure_time": self.departure_time.map(|x| x.to_string()),
+            ":arrival_time": self.arrival_time,
+            ":departure_time": self.departure_time,
         }
         .into_iter()
         .map(|(x, y)| (x.to_string(), y))
