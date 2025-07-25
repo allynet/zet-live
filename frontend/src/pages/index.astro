@@ -618,12 +618,12 @@ import BaseHead from "../components/BaseHead.astro";
       const pins = new Map<unknown, MaplibreglMarker>();
 
       let stopBounds = [
-        [-Infinity, -Infinity],
-        [Infinity, Infinity],
+        [-89.5, -89.5],
+        [89.5, 89.5],
       ] as [[number, number], [number, number]];
       let vehicleBounds = [
-        [-Infinity, -Infinity],
-        [Infinity, Infinity],
+        [-89.5, -89.5],
+        [89.5, 89.5],
       ] as [[number, number], [number, number]];
 
       function processMessage(message: V1Message) {
@@ -635,10 +635,10 @@ import BaseHead from "../components/BaseHead.astro";
           }[];
           const vehicles = message.d.vehicles.map(VehicleV1.fromSimple);
 
-          let minLat = Infinity;
-          let maxLat = -Infinity;
-          let minLng = Infinity;
-          let maxLng = -Infinity;
+          let minLat = 89.5;
+          let maxLat = -89.5;
+          let minLng = 89.5;
+          let maxLng = -89.5;
 
           // Update existing vehicles and add new ones
           for (const v of vehicles) {
@@ -677,6 +677,9 @@ import BaseHead from "../components/BaseHead.astro";
             [minLng, minLat],
             [maxLng, maxLat],
           ];
+
+          console.log("Vehicle bounds", vehicleBounds);
+          console.log("Stop bounds", stopBounds);
 
           map.setMaxBounds([
             [
@@ -729,10 +732,10 @@ import BaseHead from "../components/BaseHead.astro";
           const stops = message.d.simpleStops.map(StopV1.fromSimple);
           console.log("Updating stops");
 
-          let minLat = Infinity;
-          let maxLat = -Infinity;
-          let minLng = Infinity;
-          let maxLng = -Infinity;
+          let minLat = 89.5;
+          let maxLat = -89.5;
+          let minLng = 89.5;
+          let maxLng = -89.5;
           for (const stop of stops) {
             minLat = Math.min(minLat, stop.lat);
             maxLat = Math.max(maxLat, stop.lat);
