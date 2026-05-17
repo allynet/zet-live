@@ -49,7 +49,7 @@ impl FileData for Shape {
         ";
 
         let params = libsql::named_params! {
-            ":shape_id": self.id.to_string(),
+            ":shape_id": self.id.clone(),
             ":shape_pt_lat": self.latitude,
             ":shape_pt_lon": self.longitude,
             ":shape_pt_sequence": self.sequence,

@@ -55,8 +55,8 @@ impl FileData for StopTime {
         ";
 
         let params = libsql::named_params! {
-            ":trip_id": self.trip_id.to_string(),
-            ":stop_id": self.stop_id.to_string(),
+            ":trip_id": self.trip_id.clone(),
+            ":stop_id": self.stop_id.clone(),
             ":stop_sequence": self.stop_sequence,
             ":arrival_time": self.arrival_time,
             ":departure_time": self.departure_time,

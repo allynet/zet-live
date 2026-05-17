@@ -89,7 +89,7 @@ impl FileData for Stop {
         ";
 
         let params = libsql::named_params! {
-            ":stop_id": self.id.to_string(),
+            ":stop_id": self.id.clone(),
             ":stop_code": self.code,
             ":stop_name": self.name,
             ":tts_stop_name": self.tts_name,

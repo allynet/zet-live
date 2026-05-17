@@ -75,7 +75,7 @@ impl FileData for Trip {
         ";
 
         let params = libsql::named_params! {
-            ":trip_id": self.id.to_string(),
+            ":trip_id": self.id.clone(),
             ":route_id": self.route_id,
             ":service_id": self.service_id,
             ":trip_headsign": self.headsign,

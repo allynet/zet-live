@@ -26,10 +26,10 @@ fn main() {
         Ok(x) => x,
     };
 
-    if let Some(log_level) = config.global.log_level.as_ref() {
-        if let Err(e) = logger::update_log_level(log_level) {
-            error!(?e, "Failed to update log level");
-        }
+    if let Some(log_level) = config.global.log_level.as_ref()
+        && let Err(e) = logger::update_log_level(log_level)
+    {
+        error!(?e, "Failed to update log level");
     }
 
     info!("Running zet-live");

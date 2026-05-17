@@ -106,7 +106,7 @@ where
                             );
                         }),
                 )
-                .layer(TimeoutLayer::new(Duration::from_secs(60)))
+                .layer(TimeoutLayer::new(Duration::from_mins(1)))
                 .layer(PropagateRequestIdLayer::x_request_id())
                 .layer(SetResponseHeaderLayer::appending(
                     header::DATE,

@@ -78,7 +78,7 @@ impl FileData for Route {
         ";
 
         let params = libsql::named_params! {
-            ":route_id": self.id.to_string(),
+            ":route_id": self.id.clone(),
             ":agency_id": self.agency_id,
             ":route_short_name": self.short_name,
             ":route_long_name": self.long_name,

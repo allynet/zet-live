@@ -3,7 +3,7 @@ use std::{string::ToString, sync::Arc, time::Duration};
 use libsql::named_params;
 use once_cell::sync::Lazy;
 use tokio::sync::Notify;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, trace, warn};
 
 use crate::{cli::Config, database::Database, proto::gtfs_schedule::data::GtfsSchedule};
 
@@ -72,7 +72,7 @@ async fn fetch_newer_schedule() -> Result<Option<()>, FetcherError> {
         .build()
         .map_err(FetcherError::Fetch)?
         .get(url)
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_mins(1))
         .send()
         .await
         .map_err(FetcherError::Fetch)?;
