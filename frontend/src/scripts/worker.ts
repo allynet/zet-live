@@ -25,7 +25,8 @@ addEventListener("message", (e: MessageEvent<WorkerMessage>) => {
 
   switch (message.type) {
     case "process-message":
-      return handleProcessMessage(message.data);
+      void handleProcessMessage(message.data);
+      return;
     default:
       console.error("[WORKER]", "Unknown message type", message.type);
       return;
@@ -34,9 +35,7 @@ addEventListener("message", (e: MessageEvent<WorkerMessage>) => {
 
 async function handleProcessMessage(eventData: Blob) {
   const gotEvent = performance.now();
-  const buffer = new Uint8Array(
-    await new Response(eventData as Blob).arrayBuffer()
-  );
+  const buffer = new Uint8Array(await new Response(eventData).arrayBuffer());
   const data = decodeCbor(buffer);
   const endDecode = performance.now();
 

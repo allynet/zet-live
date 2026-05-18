@@ -17,7 +17,6 @@
 **/.vscode
 **/.DS_Store
 
-/frontend/.astro
 /frontend/dist
 /frontend/node_modules
 

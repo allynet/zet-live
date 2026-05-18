@@ -1,15 +1,10 @@
-import { Map as MaplibreglMap, Marker as MaplibreglMarker } from "maplibre-gl";
-
-export class VehicleV1<
-  TMapEntity extends MaplibreglMarker | undefined = MaplibreglMarker | undefined
-> {
+export class VehicleV1 {
   id: string;
   routeId: string;
   tripId: string;
   lat: number;
   lng: number;
   moveAngle?: number;
-  mapEntity = undefined as TMapEntity;
 
   public constructor(data: {
     id: string;
@@ -54,46 +49,5 @@ export class VehicleV1<
 
   public getMapId() {
     return `vehicle-${this.id}`;
-  }
-
-  public setMapEntity<TEntity extends MaplibreglMarker | undefined>(
-    entity: TEntity
-  ) {
-    this.mapEntity = entity as never;
-    return this as unknown as VehicleV1<TEntity>;
-  }
-
-  public updateMapEntity(
-    map: MaplibreglMap,
-    createMapMarkerElement: (vehicle: VehicleV1) => HTMLElement,
-    updateMapMarkerElement: (vehicle: VehicleV1, element: HTMLElement) => void
-  ) {
-    {
-      const prevLoc = this.mapEntity?.getLngLat();
-      if (prevLoc) {
-        const hasMoved =
-          Math.abs(this.lat - prevLoc.lat) > 0 ||
-          Math.abs(this.lng - prevLoc.lng) > 0;
-
-        if (hasMoved) {
-          this.moveAngle = Math.atan2(
-            this.lat - prevLoc.lat,
-            this.lng - prevLoc.lng
-          );
-        }
-      }
-    }
-
-    let entity =
-      this.mapEntity ??
-      new MaplibreglMarker({
-        element: createMapMarkerElement(this),
-      });
-
-    entity = entity.setLngLat(this).addTo(map);
-
-    updateMapMarkerElement(this, entity.getElement());
-
-    return this.setMapEntity(entity);
   }
 }
