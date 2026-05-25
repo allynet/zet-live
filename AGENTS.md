@@ -18,10 +18,7 @@ Monorepo: Rust backend serves both a REST/WebSocket API and the baked-in fronten
 ```
 just dev-watch-server          # hot-reload dev server (cargo watch)
 just dev-run-server            # run once (cargo run)
-just lint                      # cargo clippy (nursery + pedantic)
-just lint-fix                  # cargo clippy --fix
-just fmt                       # lint-fix THEN cargo fmt (order matters!)
-just fmt-dev                   # cargo fmt using nightly toolchain
+just fmt-dev                   # run lints and formatter
 ```
 
 The root `justfile` delegates `dev-watch-server` and `dev-run-server` to the backend.

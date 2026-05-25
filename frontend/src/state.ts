@@ -30,12 +30,25 @@ export const stopBoundsSignal = signal<[[number, number], [number, number]]>([
 ]);
 
 export const followingVehicleIdSignal = signal<string | null>(null);
+export const followEnabledSignal = signal(false);
 export const followingStopIdsSignal = signal<string[]>([]);
 export const followingTripIdSignal = signal<string | null>(null);
 export const followingTripIdsSignal = signal<Set<string> | null>(null);
 
 export const deltaMoveLinesSignal = signal<VehicleLocationPair[]>([]);
 export const followingRouteSignal = signal<[number, number][] | null>(null);
+
+export const tripStopTimesSignal = signal<Map<string, number> | null>(null);
+
+export type StopArrivalTime = {
+  tripId: string;
+  vehicleId: string;
+  routeId: string;
+  stopId: string;
+  arrivalTime: number | null;
+};
+
+export const stopArrivalTimesSignal = signal<StopArrivalTime[] | null>(null);
 
 export type SelectedStop = {
   name: string;
@@ -54,6 +67,8 @@ export const wsConnectedSignal = signal(false);
 export const bearingSignal = signal(0);
 
 export const maxBoundsSignal = signal<[[number, number], [number, number]] | null>(null);
+
+export const flyToTargetSignal = signal<{ longitude: number; latitude: number } | null>(null);
 
 export function updateMaxBounds() {
   const stopBounds = stopBoundsSignal.value;

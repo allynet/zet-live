@@ -95,7 +95,9 @@ pub fn spawn_feed_fetcher() {
             .global
             .data_fetcher
             .data_fetch_interval
-            .into();
+            .to_duration(&jiff::Zoned::now())
+            .expect("data_fetch_interval should be convertible to a duration")
+            .unsigned_abs();
         trace!(interval = ?interval, "Starting feed fetcher");
         let mut previous_timestamp = 0;
         loop {

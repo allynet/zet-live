@@ -15,11 +15,13 @@ build:
 
 dev-watch-server *args:
     RUSTFLAGS='{{rustflags}}' \
-    cargo watch \
-        --clear \
-        --quiet \
-        --watch './src' \
-        --exec 'run --target "{{rust_target}}" -- {{args}}' \
+    watchexec \
+        --clear=reset \
+        --restart \
+        --debounce '500ms' \
+        --stop-signal 'kill' \
+        -- \
+          just dev-run-server "$@"
 
 dev-run-server *args:
     RUSTFLAGS='{{rustflags}}' \

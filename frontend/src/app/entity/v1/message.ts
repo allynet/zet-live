@@ -5,7 +5,9 @@ export const v1MessageSchema = versionedSchema(
   1,
   z
     .object({
-      vehicles: z.array(z.tuple([z.string(), z.string(), z.string(), z.number(), z.number()])),
+      vehicles: z.array(
+        z.tuple([z.string(), z.string(), z.string(), z.number(), z.number()]).rest(z.unknown()),
+      ),
     })
     .or(
       z.object({

@@ -1,8 +1,9 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use include_dir::{Dir, include_dir};
 use libsql::Builder;
 use once_cell::sync::OnceCell;
+use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use tracing::{debug, error, trace};
 
@@ -80,24 +81,82 @@ impl Database {
             .collect::<Vec<_>>();
         migrations.sort_by_key(|x| x.path());
 
-        debug!(count = migrations.len(), "Running migrations");
+        let conn = self.conn.lock().await;
 
-        for migration in migrations {
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS _migrations (
+                name       TEXT PRIMARY KEY,
+                hash       TEXT NOT NULL,
+                applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            );
+            ",
+        )
+        .await?;
+
+        let applied: HashMap<String, String> = {
+            let mut rows = conn.query("SELECT name, hash FROM _migrations", ()).await?;
+            let mut map = HashMap::new();
+            while let Ok(Some(row)) = rows.next().await {
+                let name: String = row.get(0)?;
+                let hash: String = row.get(1)?;
+                map.insert(name, hash);
+            }
+            map
+        };
+
+        let mut new_count = 0u32;
+        let mut skipped_count = 0u32;
+
+        for migration in &migrations {
+            let name = migration
+                .path()
+                .to_str()
+                .ok_or_else(|| format!("Invalid migration path: {:?}", migration.path()))?;
+
             let Some(content) = migration.contents_utf8() else {
-                error!(?migration, "Failed to read migration");
+                error!(name, "Failed to read migration");
                 std::process::exit(1);
             };
-            debug!(name = ?migration.path(), "Running migration");
-            let content = format!("begin transaction; {}; commit;", content);
-            self.conn
-                .lock()
+
+            let hash = hex_digest(content);
+
+            if let Some(stored_hash) = applied.get(name) {
+                if stored_hash == &hash {
+                    trace!(name, "Migration already applied, skipping");
+                    skipped_count += 1;
+                    continue;
+                }
+                error!(
+                    name,
+                    stored_hash,
+                    current_hash = hash,
+                    "Migration content has changed since it was applied. Refusing to run to \
+                     prevent schema corruption."
+                );
+                std::process::exit(1);
+            }
+
+            debug!(name, "Running migration");
+            let batch = format!(
+                "begin transaction; {content}; INSERT INTO _migrations (name, hash) VALUES \
+                 ('{name}', '{hash}'); commit;"
+            );
+            conn.execute_batch(&batch)
                 .await
-                .execute_batch(&content)
-                .await
-                .map_err(|e| format!("Failed to run migration {:?}: {}", migration.path(), e))?;
+                .map_err(|e| format!("Failed to run migration {name}: {e}"))?;
+            new_count += 1;
         }
 
-        debug!(took = ?now.elapsed(), "Migrations complete");
+        drop(conn);
+
+        debug!(
+            total = migrations.len(),
+            new = new_count,
+            skipped = skipped_count,
+            took = ?now.elapsed(),
+            "Migrations complete"
+        );
 
         Ok(())
     }
@@ -156,4 +215,10 @@ pub enum DatabaseError {
     Libsql(#[from] libsql::Error),
     #[error("Failed to deserialize row: {0:?}")]
     Deserialize(#[from] serde::de::value::Error),
+}
+
+fn hex_digest(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    format!("{:x}", hasher.finalize())
 }

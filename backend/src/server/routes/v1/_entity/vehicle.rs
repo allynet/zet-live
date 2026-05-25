@@ -14,6 +14,20 @@ pub struct Vehicle {
     pub trip_id: String,
     pub latitude: f32,
     pub longitude: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bearing: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prev_latitude: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prev_longitude: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_stop_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_stop_sequence: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_stop_arrival_delay: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_stop_arrival_time: Option<i64>,
 }
 
 impl Vehicle {
@@ -24,6 +38,20 @@ impl Vehicle {
             self.trip_id.clone().into(),
             self.latitude.into(),
             self.longitude.into(),
+            self.prev_latitude
+                .map_or(MixedValue::null(), MixedValue::F32),
+            self.prev_longitude
+                .map_or(MixedValue::null(), MixedValue::F32),
+            self.next_stop_id
+                .as_deref()
+                .map_or(MixedValue::null(), MixedValue::from),
+            self.next_stop_sequence
+                .map_or(MixedValue::null(), MixedValue::U32),
+            self.next_stop_arrival_delay
+                .map_or(MixedValue::null(), MixedValue::I32),
+            self.next_stop_arrival_time
+                .map_or(MixedValue::null(), |v| MixedValue::U64(v.cast_unsigned())),
+            self.bearing.map_or(MixedValue::null(), MixedValue::F32),
         ]
     }
 }
@@ -58,6 +86,13 @@ impl TryFrom<&VehiclePosition> for Vehicle {
             trip_id: trip_info.trip_id().to_string(),
             latitude: position_info.latitude,
             longitude: position_info.longitude,
+            bearing: position_info.bearing,
+            prev_latitude: None,
+            prev_longitude: None,
+            next_stop_id: None,
+            next_stop_sequence: None,
+            next_stop_arrival_delay: None,
+            next_stop_arrival_time: None,
         })
     }
 }

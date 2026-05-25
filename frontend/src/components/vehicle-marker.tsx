@@ -9,8 +9,8 @@ type Props = {
 
 export function VehicleMarker({ vehicle, isFollowing, isNotFollowing, onClick }: Props) {
   const style: Record<string, string> = {};
-  if (vehicle.moveAngle) {
-    style["--move-angle"] = `${vehicle.moveAngle}`;
+  if (vehicle.bearing != null) {
+    style["--move-angle"] = `${((90 - vehicle.bearing) * Math.PI) / 180}`;
   }
 
   return (

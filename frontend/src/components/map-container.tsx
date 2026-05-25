@@ -13,20 +13,17 @@ import mapStyle3d from "@/data/maps/style/3d.json";
 import {
   vehiclesSignal,
   followingVehicleIdSignal,
-  followingStopIdsSignal,
-  followingTripIdSignal,
+  followEnabledSignal,
   followingTripIdsSignal,
   deltaMoveLinesSignal,
   displayedStopsSignal,
-  stopsGroupedSignal,
-  simpleStopsSignal,
-  selectedStopSignal,
   followingRouteSignal,
   bearingSignal,
   maxBoundsSignal,
+  flyToTargetSignal,
 } from "@/state";
+import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
 import { VehicleMarker } from "./vehicle-marker";
-import { fetchFollowingRoute, fetchStopTrips } from "@/hooks/use-stops";
 import { useSignalState } from "@/hooks/use-signal-state";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -56,14 +53,14 @@ export function MapContainer() {
   const displayedStops = useSignalState(displayedStopsSignal);
   const followingRoute = useSignalState(followingRouteSignal);
   const bearing = useSignalState(bearingSignal);
+  const flyToTarget = useSignalState(flyToTargetSignal);
+  const followEnabled = useSignalState(followEnabledSignal);
 
-  const handleVehicleClick = useCallback((vehicleId: string, tripId: string) => {
-    followingVehicleIdSignal.value = vehicleId;
-    followingTripIdSignal.value = tripId;
-    followingTripIdsSignal.value = null;
-    if (tripId) {
-      void fetchFollowingRoute(tripId);
-    }
+  const selectedVehicle = followingVehicleId ? (vehicles.get(followingVehicleId) ?? null) : null;
+  const nextStopId = selectedVehicle?.nextStopId ?? null;
+
+  const handleVehicleClick = useCallback((rawVehicleId: string, tripId: string) => {
+    selectVehicle(rawVehicleId, tripId);
   }, []);
 
   const handleClick = useCallback((e: MapLayerMouseEvent) => {
@@ -73,55 +70,11 @@ export function MapContainer() {
       const stopIds = JSON.parse(
         ((stopFeature.properties as Record<string, unknown>)?.ids as string) ?? "[]",
       ) as string[];
-
-      followingStopIdsSignal.value = stopIds;
-      followingVehicleIdSignal.value = null;
-      followingRouteSignal.value = null;
-
-      const simpleStops = simpleStopsSignal.value;
-      const stopName = stopIds.map((id) => simpleStops[id]?.name).find(Boolean) ?? "Unknown stop";
-
-      selectedStopSignal.value = { name: stopName, ids: stopIds, routes: [] };
-
-      const stops = stopIds
-        .map((id) => simpleStops[id])
-        .filter(Boolean)
-        .map((stop) => ({
-          name: stop.name,
-          lat: stop.lat,
-          lng: stop.lng,
-          ids: [stop.id],
-        }));
-      displayedStopsSignal.value = stops;
-
-      void fetchStopTrips(stopIds).then((tripIds) => {
-        if (!tripIds) return;
-        followingTripIdsSignal.value = new Set(tripIds);
-
-        const vehicles = vehiclesSignal.value;
-        const routes = new Set<string>();
-        for (const v of vehicles.values()) {
-          if (tripIds.includes(v.tripId)) {
-            routes.add(v.routeId);
-          }
-        }
-        const sorted = Array.from(routes).sort((a, b) => {
-          const na = parseInt(a, 10);
-          const nb = parseInt(b, 10);
-          if (!isNaN(na) && !isNaN(nb)) return na - nb;
-          return a.localeCompare(b);
-        });
-        selectedStopSignal.value = { name: stopName, ids: stopIds, routes: sorted };
-      });
+      selectStop(stopIds);
       return;
     }
 
-    followingVehicleIdSignal.value = null;
-    followingStopIdsSignal.value = [];
-    followingTripIdsSignal.value = null;
-    followingRouteSignal.value = null;
-    selectedStopSignal.value = null;
-    displayedStopsSignal.value = stopsGroupedSignal.value;
+    clearSelection();
   }, []);
 
   const onLoad = useCallback(async () => {
@@ -140,6 +93,26 @@ export function MapContainer() {
       bearingSignal.value = map.getBearing();
     }
   }, []);
+
+  const onDragStart = useCallback(() => {
+    if (followEnabledSignal.value) {
+      followEnabledSignal.value = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!followEnabled || !followingVehicleId) return;
+    const vehicle = vehicles.get(followingVehicleId);
+    if (!vehicle) return;
+
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+
+    map.easeTo({
+      center: [vehicle.lng, vehicle.lat],
+      duration: 500,
+    });
+  }, [followEnabled, followingVehicleId, vehicles]);
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
@@ -162,6 +135,16 @@ export function MapContainer() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!flyToTarget) return;
+    mapRef.current?.flyTo({
+      center: [flyToTarget.longitude, flyToTarget.latitude],
+      duration: 1000,
+      // zoom: 15,
+    });
+    flyToTargetSignal.value = null;
+  }, [flyToTarget]);
+
   const deltaMoveFeatures = {
     type: "FeatureCollection" as const,
     features: deltaMoveLines.map((x) => ({
@@ -181,6 +164,7 @@ export function MapContainer() {
       properties: {
         name: stop.name,
         ids: JSON.stringify(stop.ids),
+        isNext: nextStopId !== null && stop.ids.includes(nextStopId),
       },
       geometry: {
         type: "Point" as const,
@@ -191,22 +175,25 @@ export function MapContainer() {
 
   const followingRouteFeatures = followingRoute
     ? {
-      type: "FeatureCollection" as const,
-      features: [
-        {
-          type: "Feature" as const,
-          properties: { color: "#f0f" },
-          geometry: {
-            type: "LineString" as const,
-            coordinates: followingRoute,
+        type: "FeatureCollection" as const,
+        features: [
+          {
+            type: "Feature" as const,
+            properties: { color: "#f0f" },
+            geometry: {
+              type: "LineString" as const,
+              coordinates: followingRoute,
+            },
           },
-        },
-      ],
-    }
+        ],
+      }
     : {
-      type: "FeatureCollection" as const,
-      features: [],
-    };
+        type: "FeatureCollection" as const,
+        features: [],
+      };
+
+  const isFollowingSomething =
+    followingVehicleId !== null || followingTripIds !== null || followingRoute !== null;
 
   return (
     <MapGL
@@ -223,6 +210,7 @@ export function MapContainer() {
       onClick={handleClick}
       onLoad={onLoad}
       onRotate={onRotate}
+      onDragStart={onDragStart}
       class="h-full w-full"
       style={{ "--bearing": bearing }}
     >
@@ -248,7 +236,7 @@ export function MapContainer() {
               isFollowing={isFollowing}
               isNotFollowing={hasFollowing && !isFollowing}
               onClick={() => {
-                handleVehicleClick(v.getMapId(), v.tripId);
+                handleVehicleClick(v.id, v.tripId);
               }}
             />
           </Marker>
@@ -295,12 +283,38 @@ export function MapContainer() {
             "text-radial-offset": 0.5,
             "text-justify": "auto",
             "text-size": ["interpolate", ["linear"], ["zoom"], 0, 7, 10, 9, 12, 13, 22, 30],
+            "text-allow-overlap": isFollowingSomething,
+            "text-ignore-placement": isFollowingSomething,
           }}
           paint={{
-            "text-color": "#000",
+            "text-color": ["case", ["boolean", ["get", "isNext"]], "#155dfc", "#000"],
             "text-halo-color": "#fff",
-            "text-halo-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 14, 3, 18, 3, 22, 6],
-            "text-halo-blur": ["interpolate", ["linear"], ["zoom"], 10, 0, 14, 2, 18, 2, 22, 3],
+            "text-halo-width": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              10,
+              ["case", ["boolean", ["get", "isNext"]], 2, 1],
+              14,
+              ["case", ["boolean", ["get", "isNext"]], 4, 3],
+              18,
+              ["case", ["boolean", ["get", "isNext"]], 5, 3],
+              22,
+              ["case", ["boolean", ["get", "isNext"]], 8, 6],
+            ],
+            "text-halo-blur": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              10,
+              ["case", ["boolean", ["get", "isNext"]], 0, 0],
+              14,
+              ["case", ["boolean", ["get", "isNext"]], 1, 2],
+              18,
+              ["case", ["boolean", ["get", "isNext"]], 1, 2],
+              22,
+              ["case", ["boolean", ["get", "isNext"]], 2, 3],
+            ],
           }}
         />
       </Source>

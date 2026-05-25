@@ -22,7 +22,9 @@ pub fn spawn_schedule_fetcher() {
             .global
             .data_fetcher
             .schedule_fetch_interval
-            .into();
+            .to_duration(&jiff::Zoned::now())
+            .expect("schedule_fetch_interval should be convertible to a duration")
+            .unsigned_abs();
 
         trace!(interval = ?interval, "Starting schedule fetcher");
         loop {
@@ -84,17 +86,16 @@ async fn fetch_newer_schedule() -> Result<Option<()>, FetcherError> {
     trace!(headers = ?response.headers(), "Got metadata response.");
 
     let modified = {
-        let x = response
+        let ts = response
             .headers()
             .get("last-modified")
             .and_then(|x| x.to_str().ok())
-            .and_then(|x| chrono::DateTime::parse_from_rfc2822(x).ok())
-            .map_or_else(chrono::Utc::now, |x| x.to_utc());
+            .and_then(|x| jiff::fmt::rfc2822::parse(x).ok())
+            .map_or_else(jiff::Timestamp::now, |zdt| zdt.timestamp());
 
         #[allow(clippy::cast_precision_loss)]
-        let time = x.timestamp() as f64;
-
-        time + f64::from(x.timestamp_subsec_millis()) / 1_000.0
+        let time = ts.as_millisecond() as f64 / 1_000.0;
+        time
     };
 
     let etag = response

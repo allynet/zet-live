@@ -2,10 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use clap::{CommandFactory, Parser, ValueEnum};
 use clap_complete::Shell;
-use timeframe::Timeframe;
 use validator::ValidationError;
-
-mod timeframe;
 
 static CLI_ARGS: once_cell::sync::OnceCell<Arc<Config>> = once_cell::sync::OnceCell::new();
 
@@ -70,17 +67,15 @@ pub struct DataFetcherConfig {
     /// The interval at which the data is fetched/checked from the endpoint.
     /// Depends on the endpoint, but for the ZET GTFS-RT endpoint, it's updated about every 10 seconds.
     ///
-    /// The value represents a duration in seconds, minutes, hours, days, weeks, or months.
-    /// Special events are ignored, eg. leap years, daylight savings, etc.
-    /// `minute` is 60 seconds, `hour` is 60 minutes, `day` is 24 hours, `week` is 7 days, `month` is 30 days.
-    /// Eg. 1d, 2 weeks, 3 months, 4h, 5mins, 6s
+    /// Accepts a duration in human-friendly format or ISO 8601.
+    /// Eg. 2 seconds, 2 minutes, 1d, 3 months, PT2S, 4h, 5mins, 6s
     #[clap(
         long,
-        value_parser = Timeframe::parse_str,
+        value_parser = parse_span,
         default_value = "2 seconds",
         env = "ZI_DATA_FETCH_INTERVAL"
     )]
-    pub data_fetch_interval: Timeframe,
+    pub data_fetch_interval: jiff::Span,
 
     /// The endpoint to fetch the schedule from.
     ///
@@ -97,17 +92,15 @@ pub struct DataFetcherConfig {
     /// The interval at which the data is fetched/checked from the endpoint.
     /// Depends on the endpoint, but for the ZET GTFS-RT endpoint, it's updated about every 10 seconds.
     ///
-    /// The value represents a duration in seconds, minutes, hours, days, weeks, or months.
-    /// Special events are ignored, eg. leap years, daylight savings, etc.
-    /// `minute` is 60 seconds, `hour` is 60 minutes, `day` is 24 hours, `week` is 7 days, `month` is 30 days.
-    /// Eg. 1d, 2 weeks, 3 months, 4h, 5mins, 6s
+    /// Accepts a duration in human-friendly format or ISO 8601.
+    /// Eg. 2 seconds, 2 minutes, 1d, 3 months, PT2S, 4h, 5mins, 6s
     #[clap(
         long,
-        value_parser = Timeframe::parse_str,
+        value_parser = parse_span,
         default_value = "2 minutes",
         env = "ZI_SCHEDULE_FETCH_INTERVAL"
     )]
-    pub schedule_fetch_interval: Timeframe,
+    pub schedule_fetch_interval: jiff::Span,
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -245,4 +238,8 @@ fn hacky_dump_completions() -> impl clap::builder::TypedValueParser {
             .map(|_| ())
             .map_err(|_| ValidationError::new("Invalid shell"))
     }
+}
+
+fn parse_span(arg: &str) -> Result<jiff::Span, String> {
+    arg.parse::<jiff::Span>().map_err(|e| e.to_string())
 }

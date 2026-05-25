@@ -112,10 +112,10 @@ where
                     header::DATE,
                     |_response: &Response<_>| {
                         Some(
-                            chrono::Utc::now()
-                                .to_rfc2822()
+                            jiff::fmt::rfc2822::to_string(&jiff::Zoned::now())
+                                .expect("current time should be formattable as RFC 2822")
                                 .parse()
-                                .expect("Invalid date"),
+                                .expect("RFC 2822 string should be a valid HeaderValue"),
                         )
                     },
                 )),

@@ -14,10 +14,14 @@ import {
   followingVehicleIdSignal,
   followingStopIdsSignal,
   followingRouteSignal,
+  followingTripIdSignal,
   displayedStopsSignal,
   stopsGroupedSignal,
+  tripStopTimesSignal,
+  stopArrivalTimesSignal,
   type GroupedStop,
   type VehicleLocationPair,
+  type StopArrivalTime,
   updateMaxBounds,
 } from "@/state";
 import { getSharedWorker, postWorkerMessage } from "./use-worker";
@@ -74,7 +78,7 @@ function computeGroupedStops() {
     if (!acc[a.name]) {
       acc[a.name] = [];
     }
-    acc[a.name].push(a);
+    acc[a.name]!.push(a);
     return acc;
   }, {});
 
@@ -127,28 +131,21 @@ export function processMessage(message: V1Message) {
   if (typeof message.d === "object" && "vehicles" in message.d) {
     const vehicles = message.d.vehicles.map((v) => VehicleV1.fromSimple(v));
     const locationPairs: VehicleLocationPair[] = [];
-    const currentMap = vehiclesSignal.value;
 
     let minLat = 89.5;
     let maxLat = -89.5;
     let minLng = 89.5;
     let maxLng = -89.5;
 
-    const newMap = new Map(currentMap);
+    const newMap = new Map<string, VehicleV1>();
 
     for (const v of vehicles) {
-      const existing = newMap.get(v.getMapId());
-
-      if (existing) {
-        const hasMoved = Math.abs(v.lat - existing.lat) > 0 || Math.abs(v.lng - existing.lng) > 0;
-        if (hasMoved) {
-          v.moveAngle = Math.atan2(v.lat - existing.lat, v.lng - existing.lng);
-          locationPairs.push({
-            from: [existing.lng, existing.lat],
-            to: [v.lng, v.lat],
-            color: Number(v.routeId) >= 100 ? "#00f" : "#f00",
-          });
-        }
+      if (v.prevLat != null && v.prevLng != null) {
+        locationPairs.push({
+          from: [v.prevLng, v.prevLat],
+          to: [v.lng, v.lat],
+          color: Number(v.routeId) >= 100 ? "#00f" : "#f00",
+        });
       }
 
       minLat = Math.min(minLat, v.lat);
@@ -157,14 +154,6 @@ export function processMessage(message: V1Message) {
       maxLng = Math.max(maxLng, v.lng);
 
       newMap.set(v.getMapId(), v);
-    }
-
-    const ids = vehicles.map((v) => v.getMapId());
-    const idSet = new Set(ids);
-    for (const [id] of newMap.entries()) {
-      if (!idSet.has(id)) {
-        newMap.delete(id);
-      }
     }
 
     batch(() => {
@@ -176,6 +165,20 @@ export function processMessage(message: V1Message) {
       deltaMoveLinesSignal.value = locationPairs;
       updateMaxBounds();
     });
+
+    const now = Date.now();
+    if (now - lastStopTimesRefresh >= STOP_TIMES_REFRESH_INTERVAL) {
+      lastStopTimesRefresh = now;
+
+      const tripId = followingTripIdSignal.value;
+      const stopIds = followingStopIdsSignal.value;
+
+      if (tripId) {
+        void refreshTripStopTimes(tripId);
+      } else if (stopIds.length > 0) {
+        void refreshStopArrivalTimes(stopIds);
+      }
+    }
   }
 
   if (typeof message.d === "object" && "activeStops" in message.d) {
@@ -217,9 +220,11 @@ export function processMessage(message: V1Message) {
 }
 
 let followingRouteAbort: AbortController | null = null;
+let followingRouteRefreshAbort: AbortController | null = null;
 
 export async function fetchFollowingRoute(tripId: string) {
   followingRouteAbort?.abort();
+  followingRouteRefreshAbort?.abort();
   followingRouteAbort = new AbortController();
   const { signal } = followingRouteAbort;
 
@@ -229,6 +234,12 @@ export async function fetchFollowingRoute(tripId: string) {
     d: {
       stopIds: string[];
       route: [number, number][];
+      stopTimes: {
+        stopId: string;
+        stopSequence: number;
+        stopName: string;
+        arrivalTime: number | null;
+      }[];
     };
   } | null;
 
@@ -250,12 +261,78 @@ export async function fetchFollowingRoute(tripId: string) {
     lng: stop.lng,
     ids: [stop.id],
   }));
+
+  const map = new Map<string, number>();
+  for (const s of shape.d.stopTimes) {
+    if (s.arrivalTime != null) {
+      map.set(s.stopId, s.arrivalTime);
+    }
+  }
+  tripStopTimesSignal.value = map;
 }
 
 let stopTripsAbort: AbortController | null = null;
+let stopTripsRefreshAbort: AbortController | null = null;
+
+let lastStopTimesRefresh = 0;
+const STOP_TIMES_REFRESH_INTERVAL = 15_000;
+
+async function refreshTripStopTimes(tripId: string) {
+  followingRouteRefreshAbort?.abort();
+  followingRouteRefreshAbort = new AbortController();
+  const { signal } = followingRouteRefreshAbort;
+
+  const shape = (await fetch(`${API_URL}/v1/schedule/trip-info/${tripId}`, { signal })
+    .then((x) => x.json())
+    .catch(() => null)) as {
+    d: {
+      stopTimes: {
+        stopId: string;
+        arrivalTime: number | null;
+      }[];
+    };
+  } | null;
+
+  if (signal.aborted) return;
+
+  if (!shape) return;
+
+  const map = new Map<string, number>();
+  for (const s of shape.d.stopTimes) {
+    if (s.arrivalTime != null) {
+      map.set(s.stopId, s.arrivalTime);
+    }
+  }
+  tripStopTimesSignal.value = map;
+}
+
+async function refreshStopArrivalTimes(stopIds: string[]) {
+  stopTripsRefreshAbort?.abort();
+  stopTripsRefreshAbort = new AbortController();
+  const { signal } = stopTripsRefreshAbort;
+
+  const queryParams = new URLSearchParams();
+  for (const stopId of stopIds) {
+    queryParams.append("stop", stopId);
+  }
+  const res = (await fetch(`${API_URL}/v1/schedule/stop-trips?${queryParams.toString()}`, {
+    signal,
+  })
+    .then((x) => x.json())
+    .catch(() => null)) as {
+    d: {
+      arrivalTimes: StopArrivalTime[];
+    };
+  } | null;
+
+  if (signal.aborted) return;
+
+  stopArrivalTimesSignal.value = res?.d.arrivalTimes ?? null;
+}
 
 export async function fetchStopTrips(stopIds: string[]) {
   stopTripsAbort?.abort();
+  stopTripsRefreshAbort?.abort();
   stopTripsAbort = new AbortController();
   const { signal } = stopTripsAbort;
 
@@ -267,9 +344,16 @@ export async function fetchStopTrips(stopIds: string[]) {
     signal,
   })
     .then((x) => x.json())
-    .catch(() => null)) as { d: { stopTrips: string[] } } | null;
+    .catch(() => null)) as {
+    d: {
+      stopTrips: string[];
+      arrivalTimes: StopArrivalTime[];
+    };
+  } | null;
 
   if (signal.aborted) return null;
+
+  stopArrivalTimesSignal.value = trips?.d.arrivalTimes ?? null;
 
   return trips?.d.stopTrips ?? null;
 }

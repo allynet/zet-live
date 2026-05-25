@@ -1,4 +1,9 @@
-use std::{collections::HashSet, fmt::Write, sync::Arc, time::Instant};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Write,
+    sync::Arc,
+    time::Instant,
+};
 
 use _entity::vehicle::Vehicle;
 use axum::{Router, routing::get};
@@ -179,20 +184,185 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
     let vehicles_feed = feed;
     let vehicles_app_state = app_state;
     tokio::task::spawn(async move {
+        struct NextStopInfo {
+            stop_id: String,
+            stop_sequence: u32,
+            arrival_delay: Option<i32>,
+            arrival_time: Option<i64>,
+        }
+
+        struct LiveStopTimeInfo {
+            stop_id: String,
+            stop_sequence: u32,
+            arrival_time: Option<i64>,
+            arrival_delay: Option<i32>,
+        }
+
+        let (trip_updates, all_stop_times): (
+            HashMap<String, NextStopInfo>,
+            HashMap<String, Vec<LiveStopTimeInfo>>,
+        ) = vehicles_feed
+            .entity
+            .iter()
+            .filter_map(|x| x.trip_update.as_ref())
+            .filter_map(|tu| {
+                let trip_id = tu.trip.trip_id().to_string();
+                if trip_id.is_empty() {
+                    return None;
+                }
+
+                // The GTFS-RT feed's first StopTimeUpdate may be for a stop
+                // the vehicle has already passed (feed lag). Skip any stops
+                // whose predicted arrival is more than 30s in the past so the
+                // frontend always highlights a genuinely upcoming stop.
+                let now_secs = jiff::Timestamp::now().as_second();
+                let first_stu = tu
+                    .stop_time_update
+                    .iter()
+                    .find(|stu| {
+                        stu.arrival
+                            .as_ref()
+                            .and_then(|a| a.time)
+                            .is_none_or(|time| time >= now_secs - 30)
+                    })
+                    .or_else(|| tu.stop_time_update.last())?;
+                let first_stop_sequence = first_stu.stop_sequence?;
+
+                let next_stop = NextStopInfo {
+                    stop_id: first_stu.stop_id().to_string(),
+                    stop_sequence: first_stop_sequence,
+                    arrival_delay: first_stu.arrival.as_ref().and_then(|a| a.delay),
+                    arrival_time: first_stu.arrival.as_ref().and_then(|a| a.time),
+                };
+
+                let all_stus = tu
+                    .stop_time_update
+                    .iter()
+                    .filter_map(|stu| {
+                        let stop_sequence = stu.stop_sequence?;
+                        Some(LiveStopTimeInfo {
+                            stop_id: stu.stop_id().to_string(),
+                            stop_sequence,
+                            arrival_time: stu.arrival.as_ref().and_then(|a| a.time),
+                            arrival_delay: stu.arrival.as_ref().and_then(|a| a.delay),
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
+                Some(((trip_id.clone(), next_stop), (trip_id, all_stus)))
+            })
+            .unzip();
+
         let vehicles = vehicles_feed
             .entity
             .iter()
             .filter_map(|x| x.vehicle.as_ref())
             .filter_map(|x| Vehicle::try_from(x).ok())
+            .map(|mut v| {
+                if let Some(next) = trip_updates.get(&v.trip_id) {
+                    v.next_stop_id = Some(next.stop_id.clone());
+                    v.next_stop_sequence = Some(next.stop_sequence);
+                    v.next_stop_arrival_delay = next.arrival_delay;
+                    v.next_stop_arrival_time = next.arrival_time;
+                }
+                v
+            })
             .collect::<Vec<_>>();
 
         trace!(current_vehicles = ?vehicles.len(), "Updating vehicles");
+
+        let previous_positions: HashMap<String, (f32, f32, Option<f32>)> = {
+            #[derive(serde::Deserialize)]
+            struct PrevPosition {
+                vehicle_id: String,
+                latitude: f32,
+                longitude: f32,
+                bearing: Option<f32>,
+            }
+
+            let rows = Database::query::<PrevPosition>(
+                "SELECT vehicle_id, latitude, longitude, bearing FROM live_vehicles",
+                libsql::params![],
+            )
+            .await;
+
+            match rows {
+                Ok(rows) => rows
+                    .into_iter()
+                    .map(|r| (r.vehicle_id, (r.latitude, r.longitude, r.bearing)))
+                    .collect(),
+                Err(e) => {
+                    error!(?e, "Error fetching previous positions");
+                    HashMap::new()
+                }
+            }
+        };
+
+        let vehicles: Vec<Vehicle> = vehicles
+            .into_iter()
+            .map(|mut v| {
+                if let Some((prev_lat, prev_lng, prev_bearing)) = previous_positions.get(&v.id) {
+                    let dist = haversine_distance(*prev_lat, *prev_lng, v.latitude, v.longitude);
+                    if dist < 5.0 {
+                        v.latitude = *prev_lat;
+                        v.longitude = *prev_lng;
+                        v.bearing = *prev_bearing;
+                    } else {
+                        v.prev_latitude = Some(*prev_lat);
+                        v.prev_longitude = Some(*prev_lng);
+                        v.bearing = Some(
+                            (v.longitude - *prev_lng)
+                                .atan2(v.latitude - *prev_lat)
+                                .to_degrees(),
+                        );
+                    }
+                }
+                v
+            })
+            .collect();
+
         let stmts_start = Instant::now();
         let stmts = {
             let mut stmts = String::new();
 
             stmts.push_str("delete from live_vehicles;\n");
+            stmts.push_str("delete from live_trip_stop_times;\n");
+
+            // Compute base_midnight once per feed cycle from the first live stop time
+            // that has an arrival_time (absolute Unix timestamp).
+            // We derive it by querying the first matching scheduled offset after the batch
+            // executes. For now, store a placeholder and update below.
+            let base_midnight_sql = compute_base_midnight_sql(
+                all_stop_times
+                    .values()
+                    .flat_map(|v| v.iter())
+                    .map(|s| (s.arrival_time, s.arrival_delay)),
+            );
+
             for vehicle in &vehicles {
+                let prev_lat_sql = vehicle
+                    .prev_latitude
+                    .map_or_else(|| "NULL".to_string(), |v| v.to_string());
+                let prev_lng_sql = vehicle
+                    .prev_longitude
+                    .map_or_else(|| "NULL".to_string(), |v| v.to_string());
+                let bearing_sql = vehicle
+                    .bearing
+                    .map_or_else(|| "NULL".to_string(), |v| v.to_string());
+                let next_stop_id_sql = vehicle.next_stop_id.as_deref().map_or_else(
+                    || "NULL".to_string(),
+                    |v| format!("'{}'", v.replace('\'', "''")),
+                );
+                let next_stop_seq_sql = vehicle
+                    .next_stop_sequence
+                    .map_or_else(|| "NULL".to_string(), |v| v.to_string());
+                let next_stop_delay_sql = vehicle
+                    .next_stop_arrival_delay
+                    .map_or_else(|| "NULL".to_string(), |v| v.to_string());
+                let next_stop_arrival_time_sql = vehicle
+                    .next_stop_arrival_time
+                    .map_or_else(|| "NULL".to_string(), |v| v.to_string());
+
                 let res = writeln!(
                     stmts,
                     "INSERT INTO live_vehicles
@@ -201,10 +371,24 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     , trip_id
                     , latitude
                     , longitude
+                    , prev_latitude
+                    , prev_longitude
+                    , bearing
+                    , next_stop_id
+                    , next_stop_sequence
+                    , next_stop_arrival_delay
+                    , next_stop_arrival_time
                     ) values
                     ( '{}'
                     , '{}'
                     , '{}'
+                    , {}
+                    , {}
+                    , {}
+                    , {}
+                    , {}
+                    , {}
+                    , {}
                     , {}
                     , {}
                     );",
@@ -213,6 +397,13 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     vehicle.trip_id.replace('\'', "''"),
                     vehicle.latitude,
                     vehicle.longitude,
+                    prev_lat_sql,
+                    prev_lng_sql,
+                    bearing_sql,
+                    next_stop_id_sql,
+                    next_stop_seq_sql,
+                    next_stop_delay_sql,
+                    next_stop_arrival_time_sql,
                 );
 
                 if let Err(e) = res {
@@ -220,6 +411,46 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     return;
                 }
             }
+
+            for (trip_id, stop_times) in &all_stop_times {
+                for stu in stop_times {
+                    let arrival_time_sql = stu
+                        .arrival_time
+                        .map_or_else(|| "NULL".to_string(), |v| v.to_string());
+                    let arrival_delay_sql = stu
+                        .arrival_delay
+                        .map_or_else(|| "NULL".to_string(), |v| v.to_string());
+
+                    let res = writeln!(
+                        stmts,
+                        "INSERT INTO live_trip_stop_times
+                        ( trip_id
+                        , stop_id
+                        , stop_sequence
+                        , arrival_time
+                        , arrival_delay
+                        ) values
+                        ( '{}'
+                        , '{}'
+                        , {}
+                        , {}
+                        , {}
+                        );",
+                        trip_id.replace('\'', "''"),
+                        stu.stop_id.replace('\'', "''"),
+                        stu.stop_sequence,
+                        arrival_time_sql,
+                        arrival_delay_sql,
+                    );
+
+                    if let Err(e) = res {
+                        error!(?e, "Failed to write to stmts");
+                        return;
+                    }
+                }
+            }
+
+            stmts.push_str(&base_midnight_sql);
 
             stmts
         };
@@ -311,4 +542,66 @@ pub enum Broadcast {
 pub enum Transmission {
     Empty,
     BroadcastToAll(Vec<u8>),
+}
+
+fn haversine_distance(lat1: f32, lng1: f32, lat2: f32, lng2: f32) -> f32 {
+    let lat1_rad = lat1.to_radians();
+    let lat2_rad = lat2.to_radians();
+    let dlat = (lat2 - lat1).to_radians();
+    let dlng = (lng2 - lng1).to_radians();
+
+    let a = (lat1_rad.cos() * lat2_rad.cos())
+        .mul_add((dlng / 2.0).sin().powi(2), (dlat / 2.0).sin().powi(2));
+    let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
+
+    6_371_000.0 * c
+}
+
+fn compute_base_midnight_sql(
+    stop_times: impl Iterator<Item = (Option<i64>, Option<i32>)>,
+) -> String {
+    let tz = jiff::tz::TimeZone::system();
+    let today_midnight = jiff::Zoned::now()
+        .with()
+        .hour(0)
+        .minute(0)
+        .second(0)
+        .nanosecond(0)
+        .build()
+        .ok()
+        .map_or(0, |t| t.timestamp().as_second());
+
+    let mut best_base = today_midnight;
+    let mut best_diff = u64::MAX;
+
+    for (arrival_time, arrival_delay) in stop_times {
+        if let Some(live_time) = arrival_time {
+            let delay = i64::from(arrival_delay.unwrap_or(0));
+            let scheduled_utc = live_time - delay;
+
+            let local_midnight = jiff::Timestamp::from_second(scheduled_utc)
+                .ok()
+                .and_then(|ts| {
+                    let zdt = ts.to_zoned(tz.clone());
+                    zdt.with()
+                        .hour(0)
+                        .minute(0)
+                        .second(0)
+                        .nanosecond(0)
+                        .build()
+                        .ok()
+                        .map(|zdt| zdt.timestamp().as_second())
+                });
+
+            if let Some(local_midnight) = local_midnight {
+                let diff = local_midnight.abs_diff(today_midnight);
+                if diff < best_diff && diff < 86400 * 2 {
+                    best_base = local_midnight;
+                    best_diff = diff;
+                }
+            }
+        }
+    }
+
+    format!("UPDATE live_feed_metadata SET base_midnight = {best_base} WHERE id = 0;\n")
 }

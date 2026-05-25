@@ -30,6 +30,12 @@ body,
   initial-value: black;
 }
 
+button,
+a[href],
+input[type="submit"] {
+  cursor: pointer;
+}
+
 .vehicle-marker {
   position: relative;
   display: flex;

@@ -11,9 +11,24 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        assetFileNames: "_static/file.[hash].[ext]",
-        chunkFileNames: "_static/chunk.[hash].js",
-        entryFileNames: "_static/entry.[hash].js",
+        assetFileNames: "_static/file.[name].[hash].[ext]",
+        chunkFileNames: "_static/chunk.[name].[hash].js",
+        entryFileNames: "_static/entry.[name].[hash].js",
+        manualChunks(id) {
+          if (id.includes("/node_modules/@vis.gl/") || id.includes("/node_modules/maplibre-gl/")) {
+            return "map";
+          }
+
+          if (id.includes("/node_modules/framer-motion/") || id.includes("/node_modules/motion")) {
+            return "motion";
+          }
+
+          if (id.includes("/node_modules/")) {
+            return "vendor";
+          }
+
+          return null;
+        },
       },
     },
   },
