@@ -198,10 +198,21 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             arrival_delay: Option<i32>,
         }
 
-        let (trip_updates, all_stop_times): (
-            HashMap<String, NextStopInfo>,
-            HashMap<String, Vec<LiveStopTimeInfo>>,
-        ) = vehicles_feed
+        let current_stop_sequences = vehicles_feed
+            .entity
+            .iter()
+            .filter_map(|x| x.vehicle.as_ref())
+            .filter_map(|vp| {
+                let trip_id = vp.trip.as_ref()?.trip_id();
+                if trip_id.is_empty() {
+                    return None;
+                }
+                vp.current_stop_sequence
+                    .map(|seq| (trip_id.to_string(), seq))
+            })
+            .collect::<HashMap<_, _>>();
+
+        let (trip_updates, all_stop_times): (HashMap<_, _>, HashMap<_, _>) = vehicles_feed
             .entity
             .iter()
             .filter_map(|x| x.trip_update.as_ref())
@@ -215,15 +226,22 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 // the vehicle has already passed (feed lag). Skip any stops
                 // whose predicted arrival is more than 30s in the past so the
                 // frontend always highlights a genuinely upcoming stop.
+                // Also skip stops before the vehicle's current_stop_sequence
+                // from VehiclePosition, since those are definitely passed.
                 let now_secs = jiff::Timestamp::now().as_second();
+                let min_stop_seq = current_stop_sequences.get(&trip_id);
                 let first_stu = tu
                     .stop_time_update
                     .iter()
                     .find(|stu| {
-                        stu.arrival
-                            .as_ref()
-                            .and_then(|a| a.time)
-                            .is_none_or(|time| time >= now_secs - 30)
+                        let seq_ok = min_stop_seq
+                            .is_none_or(|&min| stu.stop_sequence.is_none_or(|seq| seq >= min));
+                        seq_ok
+                            && stu
+                                .arrival
+                                .as_ref()
+                                .and_then(|a| a.time)
+                                .is_none_or(|time| time >= now_secs - 30)
                     })
                     .or_else(|| tu.stop_time_update.last())?;
                 let first_stop_sequence = first_stu.stop_sequence?;
@@ -271,7 +289,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
 
         trace!(current_vehicles = ?vehicles.len(), "Updating vehicles");
 
-        let previous_positions: HashMap<String, (f32, f32, Option<f32>)> = {
+        let previous_positions = {
             #[derive(serde::Deserialize)]
             struct PrevPosition {
                 vehicle_id: String,

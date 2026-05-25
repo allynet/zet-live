@@ -4,7 +4,7 @@ use axum::{extract::Path, http::HeaderMap, response::IntoResponse};
 use axum_extra::extract::Query;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use tracing::{error, warn};
+use tracing::{debug, error};
 
 use crate::{
     database::Database,
@@ -518,7 +518,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
                 if let Some(max) = max_time
                     && t < max
                 {
-                    warn!(
+                    debug!(
                         stop_id = %st.stop_id,
                         stop_sequence = st.stop_sequence,
                         predicted = t,
