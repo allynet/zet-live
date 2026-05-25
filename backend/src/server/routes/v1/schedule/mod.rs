@@ -21,20 +21,7 @@ async fn get_base_midnight() -> i64 {
     .await
     .ok()
     .flatten()
-    .map_or_else(
-        || {
-            jiff::Zoned::now()
-                .with()
-                .hour(0)
-                .minute(0)
-                .second(0)
-                .nanosecond(0)
-                .build()
-                .ok()
-                .map_or(0, |t| t.timestamp().as_second())
-        },
-        |r| r.base_midnight,
-    )
+    .map_or(0, |r| r.base_midnight)
 }
 
 pub async fn get_routes(headers: HeaderMap) -> impl IntoResponse {
@@ -202,16 +189,7 @@ pub async fn get_stop_trips(
     let mut seen_trips: HashSet<String> = HashSet::new();
     let mut arrival_times: Vec<StopArrivalTime> = Vec::new();
 
-    let tz = jiff::tz::TimeZone::system();
-    let today_midnight = jiff::Zoned::now()
-        .with()
-        .hour(0)
-        .minute(0)
-        .second(0)
-        .nanosecond(0)
-        .build()
-        .ok()
-        .map_or(0, |t| t.timestamp().as_second());
+    let now = jiff::Timestamp::now().as_second();
 
     let mut trip_base_midnight: HashMap<String, i64> = HashMap::new();
 
@@ -219,23 +197,10 @@ pub async fn get_stop_trips(
         if let (Some(live_time), Some(offset)) = (row.live_arrival_time, row.arrival_time_seconds) {
             let delay = i64::from(row.live_arrival_delay.unwrap_or(0));
             let computed = live_time - delay - offset;
-            let local_midnight = jiff::Timestamp::from_second(computed)
-                .ok()
-                .map(|ts| ts.to_zoned(tz.clone()))
-                .and_then(|zdt| {
-                    zdt.with()
-                        .hour(0)
-                        .minute(0)
-                        .second(0)
-                        .nanosecond(0)
-                        .build()
-                        .ok()
-                        .map(|zdt| zdt.timestamp().as_second())
-                });
-            if let Some(lm) = local_midnight
-                && lm.abs_diff(today_midnight) < 86400 * 2
-            {
-                trip_base_midnight.entry(row.trip_id.clone()).or_insert(lm);
+            if computed.abs_diff(now) < 86400 * 2 {
+                trip_base_midnight
+                    .entry(row.trip_id.clone())
+                    .or_insert(computed);
             }
         }
     }
@@ -471,16 +436,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
 
         let base_midnight = {
             let global = get_base_midnight().await;
-            let tz = jiff::tz::TimeZone::system();
-            let today_midnight = jiff::Zoned::now()
-                .with()
-                .hour(0)
-                .minute(0)
-                .second(0)
-                .nanosecond(0)
-                .build()
-                .ok()
-                .map_or(0, |t| t.timestamp().as_second());
+            let now = jiff::Timestamp::now().as_second();
 
             live.iter()
                 .find_map(|l| {
@@ -491,20 +447,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
                         .and_then(|s| s.arrival_time_seconds)?;
                     let delay = i64::from(l.arrival_delay.unwrap_or(0));
                     let computed = time - delay - offset;
-                    let local_midnight = jiff::Timestamp::from_second(computed)
-                        .ok()
-                        .map(|ts| ts.to_zoned(tz.clone()))
-                        .and_then(|zdt| {
-                            zdt.with()
-                                .hour(0)
-                                .minute(0)
-                                .second(0)
-                                .nanosecond(0)
-                                .build()
-                                .ok()
-                                .map(|zdt| zdt.timestamp().as_second())
-                        })?;
-                    (local_midnight.abs_diff(today_midnight) < 86400 * 2).then_some(local_midnight)
+                    (computed.abs_diff(now) < 86400 * 2).then_some(computed)
                 })
                 .unwrap_or(global)
         };

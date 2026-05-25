@@ -328,16 +328,51 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             stmts.push_str("delete from live_vehicles;\n");
             stmts.push_str("delete from live_trip_stop_times;\n");
 
-            // Compute base_midnight once per feed cycle from the first live stop time
-            // that has an arrival_time (absolute Unix timestamp).
-            // We derive it by querying the first matching scheduled offset after the batch
-            // executes. For now, store a placeholder and update below.
-            let base_midnight_sql = compute_base_midnight_sql(
-                all_stop_times
-                    .values()
-                    .flat_map(|v| v.iter())
-                    .map(|s| (s.arrival_time, s.arrival_delay)),
-            );
+            let schedule_offsets = {
+                let trip_ids = all_stop_times.keys().cloned().collect::<Vec<_>>();
+                if trip_ids.is_empty() {
+                    HashMap::new()
+                } else {
+                    let placeholders = trip_ids.iter().map(|_| "?").collect::<Vec<_>>();
+                    let sql = format!(
+                        "SELECT trip_id, stop_sequence, arrival_time_seconds FROM gtfs_stop_times \
+                         WHERE trip_id IN ({}) AND arrival_time_seconds IS NOT NULL",
+                        placeholders.join(", ")
+                    );
+                    let mut map = HashMap::new();
+                    let param_refs = trip_ids.iter().map(String::as_str).collect::<Vec<_>>();
+                    if let Ok(mut rows) = Database::conn()
+                        .lock()
+                        .await
+                        .query(&sql, libsql::params_from_iter(param_refs))
+                        .await
+                    {
+                        while let Ok(Some(row)) = rows.next().await {
+                            let Ok(trip_id) = row.get::<String>(0) else {
+                                continue;
+                            };
+                            let Ok(stop_sequence) = row.get::<u32>(1) else {
+                                continue;
+                            };
+                            let Ok(offset) = row.get::<i64>(2) else {
+                                continue;
+                            };
+                            map.insert((trip_id, stop_sequence), offset);
+                        }
+                    }
+                    map
+                }
+            };
+
+            let base_midnight_sql =
+                compute_base_midnight_sql(all_stop_times.iter().flat_map(|(trip_id, stops)| {
+                    stops.iter().map(|s| {
+                        let offset = schedule_offsets
+                            .get(&(trip_id.clone(), s.stop_sequence))
+                            .copied();
+                        (s.arrival_time, s.arrival_delay, offset)
+                    })
+                }));
 
             for vehicle in &vehicles {
                 let prev_lat_sql = vehicle
@@ -558,50 +593,31 @@ fn haversine_distance(lat1: f32, lng1: f32, lat2: f32, lng2: f32) -> f32 {
 }
 
 fn compute_base_midnight_sql(
-    stop_times: impl Iterator<Item = (Option<i64>, Option<i32>)>,
+    stop_times: impl Iterator<Item = (Option<i64>, Option<i32>, Option<i64>)>,
 ) -> String {
-    let tz = jiff::tz::TimeZone::system();
-    let today_midnight = jiff::Zoned::now()
-        .with()
-        .hour(0)
-        .minute(0)
-        .second(0)
-        .nanosecond(0)
-        .build()
-        .ok()
-        .map_or(0, |t| t.timestamp().as_second());
+    let now = jiff::Timestamp::now().as_second();
 
-    let mut best_base = today_midnight;
-    let mut best_diff = u64::MAX;
+    let best_base = stop_times
+        .filter_map(|(arrival_time, arrival_delay, arrival_time_seconds)| {
+            Some((
+                arrival_time?,
+                i64::from(arrival_delay.unwrap_or(0)),
+                arrival_time_seconds?,
+            ))
+        })
+        .map(|(live_time, delay, offset)| {
+            let base = live_time - delay - offset;
 
-    for (arrival_time, arrival_delay) in stop_times {
-        if let Some(live_time) = arrival_time {
-            let delay = i64::from(arrival_delay.unwrap_or(0));
-            let scheduled_utc = live_time - delay;
-
-            let local_midnight = jiff::Timestamp::from_second(scheduled_utc)
-                .ok()
-                .and_then(|ts| {
-                    let zdt = ts.to_zoned(tz.clone());
-                    zdt.with()
-                        .hour(0)
-                        .minute(0)
-                        .second(0)
-                        .nanosecond(0)
-                        .build()
-                        .ok()
-                        .map(|zdt| zdt.timestamp().as_second())
-                });
-
-            if let Some(local_midnight) = local_midnight {
-                let diff = local_midnight.abs_diff(today_midnight);
-                if diff < best_diff && diff < 86400 * 2 {
-                    best_base = local_midnight;
-                    best_diff = diff;
-                }
+            (base, base.abs_diff(now))
+        })
+        .reduce(|(best_base, best_diff), (base, diff)| {
+            if diff < best_diff && diff < 86400 * 2 {
+                (base, diff)
+            } else {
+                (best_base, best_diff)
             }
-        }
-    }
+        })
+        .map_or(0, |(base, _)| base);
 
     format!("UPDATE live_feed_metadata SET base_midnight = {best_base} WHERE id = 0;\n")
 }
