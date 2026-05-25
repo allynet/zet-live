@@ -70,9 +70,7 @@ async fn fetch_newer_schedule() -> Result<Option<()>, FetcherError> {
 
     debug!(url = ?url.as_str(), "Fetching metadata");
 
-    let response = reqwest::Client::builder()
-        .build()
-        .map_err(FetcherError::Fetch)?
+    let response = crate::http_client::HTTP_CLIENT
         .get(url)
         .timeout(Duration::from_mins(1))
         .send()

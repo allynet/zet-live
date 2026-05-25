@@ -4,6 +4,7 @@ use tracing::{error, info, trace, warn};
 mod cli;
 mod database;
 mod entity;
+mod http_client;
 mod logger;
 mod proto;
 mod server;

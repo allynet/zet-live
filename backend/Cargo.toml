@@ -41,6 +41,7 @@ url = { version = "2.5.8", features = ["serde"] }
 validator = { version = "0.20.0", features = ["derive"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 hex = "0.4.3"
+webpki-root-certs = "1.0.7"
 
 [lints.clippy]
 nursery = { level = "warn", priority = -1 }

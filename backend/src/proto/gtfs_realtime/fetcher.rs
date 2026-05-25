@@ -24,9 +24,7 @@ pub async fn fetch_feed() -> Result<FeedMessage, FetcherError> {
     debug!(url = ?url.as_str(), "Fetching feed");
 
     let start = Instant::now();
-    let response = reqwest::Client::builder()
-        .build()
-        .map_err(FetcherError::FetchError)?
+    let response = crate::http_client::HTTP_CLIENT
         .get(url)
         .timeout(Duration::from_secs(10))
         .send()
