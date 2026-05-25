@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
+use axum_client_ip::ClientIpSource;
 use clap::{CommandFactory, Parser, ValueEnum};
 use clap_complete::Shell;
 use validator::ValidationError;
@@ -126,6 +127,13 @@ pub struct ServerConfig {
     /// Should be a valid database URL, such as `sqlite:./db.sqlite`.
     #[clap(long, default_value = ":memory:", env = "DATABASE_URL", value_parser = DatabaseUrl::try_from_string)]
     pub database_url: DatabaseUrl,
+
+    /// The source to use for the client's IP address.
+    ///
+    /// This is used for logging and rate limiting.
+    /// Should be set to `rightmost-x-forwarded-for` if the server is behind a reverse proxy
+    #[clap(long, env = "IP_SOURCE", default_value_t = ClientIpSource::RightmostXForwardedFor)]
+    pub ip_source: ClientIpSource,
 }
 impl ServerConfig {
     pub fn address(&self) -> Result<std::net::SocketAddr, std::net::AddrParseError> {

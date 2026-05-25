@@ -44,7 +44,8 @@ pub async fn run(server_config: &ServerConfig) -> Result<(), Box<dyn std::error:
         }
     }
 
-    let app = routes::create_router();
+    let app = routes::create_router(server_config.ip_source.clone())
+        .into_make_service_with_connect_info::<SocketAddr>();
 
     let listener = create_listener(server_config).await?;
     info!(
@@ -52,12 +53,7 @@ pub async fn run(server_config: &ServerConfig) -> Result<(), Box<dyn std::error:
         listener.local_addr().expect("Failed to get local address")
     );
 
-    if let Err(e) = axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await
-    {
+    if let Err(e) = axum::serve(listener, app).await {
         error!(?e, "Failed to start server");
         return Err(e.into());
     }

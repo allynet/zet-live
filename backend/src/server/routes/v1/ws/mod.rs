@@ -9,7 +9,7 @@ use axum::{
     http::HeaderMap,
     response::IntoResponse,
 };
-use axum_client_ip::{InsecureClientIp, SecureClientIp};
+use axum_client_ip::ClientIp;
 use futures::{SinkExt, StreamExt};
 use once_cell::sync::Lazy;
 use tokio::{
@@ -31,17 +31,9 @@ pub async fn get_ws_connections(headers: HeaderMap) -> impl IntoResponse {
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<V1AppState>>,
-    InsecureClientIp(insecure_ip): InsecureClientIp,
-    SecureClientIp(secure_ip): SecureClientIp,
+    ClientIp(ip): ClientIp,
 ) -> impl IntoResponse {
-    if insecure_ip != secure_ip {
-        warn!(
-            ?insecure_ip,
-            ?secure_ip,
-            "Insecure and secure IPs do not match"
-        );
-    }
-    ws.on_upgrade(move |stream| websocket(stream, insecure_ip, state))
+    ws.on_upgrade(move |stream| websocket(stream, ip, state))
 }
 
 async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {

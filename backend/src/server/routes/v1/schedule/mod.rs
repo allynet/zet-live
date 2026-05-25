@@ -469,7 +469,6 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
             }
         };
 
-        #[allow(clippy::filter_map_next)]
         let base_midnight = {
             let global = get_base_midnight().await;
             let tz = jiff::tz::TimeZone::system();
@@ -484,7 +483,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
                 .map_or(0, |t| t.timestamp().as_second());
 
             live.iter()
-                .filter_map(|l| {
+                .find_map(|l| {
                     let time = l.arrival_time?;
                     let offset = scheduled
                         .iter()
@@ -507,7 +506,6 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
                         })?;
                     (local_midnight.abs_diff(today_midnight) < 86400 * 2).then_some(local_midnight)
                 })
-                .next()
                 .unwrap_or(global)
         };
 

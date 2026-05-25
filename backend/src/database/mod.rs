@@ -259,5 +259,5 @@ pub enum DatabaseError {
 fn hex_digest(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }

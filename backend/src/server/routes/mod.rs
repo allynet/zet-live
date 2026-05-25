@@ -4,14 +4,14 @@ use axum::{
     Router,
     http::{HeaderValue, Request, Response},
 };
-use axum_client_ip::SecureClientIpSource;
-use reqwest::header;
+use axum_client_ip::ClientIpSource;
+use reqwest::{StatusCode, header};
 use tower::ServiceBuilder;
 use tower_http::{
     catch_panic::CatchPanicLayer,
     cors::{self, CorsLayer},
     request_id::{MakeRequestId, PropagateRequestIdLayer, RequestId, SetRequestIdLayer},
-    set_header::SetResponseHeaderLayer,
+    set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     timeout::TimeoutLayer,
     trace::TraceLayer,
 };
@@ -32,23 +32,46 @@ impl MakeRequestId for MakeRequestUlid {
     }
 }
 
-pub fn create_router() -> Router {
+pub fn create_router(ip_source: ClientIpSource) -> Router {
     add_middlewares(
         Router::new()
             .fallback_service(frontend::create_service())
             .nest("/api/v1", v1::create_v1_router()),
+        ip_source,
     )
 }
 
-fn add_middlewares<T>(router: Router<T>) -> Router<T>
+#[allow(clippy::too_many_lines)]
+fn add_middlewares<T>(router: Router<T>, ip_source: ClientIpSource) -> Router<T>
 where
     T: std::clone::Clone + Send + Sync + 'static,
 {
     router
-        .layer(CatchPanicLayer::new())
+        .layer(CatchPanicLayer::custom(|err| {
+            debug!(?err, "Panic caught in request handling");
+
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(axum::body::Body::from(format!(
+                    "Internal Server Error: {err:?}"
+                )))
+                .expect("Failed to build response")
+        }))
         .layer(
             ServiceBuilder::new()
-                .layer(SecureClientIpSource::ConnectInfo.into_extension())
+                .layer(ip_source.into_extension())
+                .layer(SetRequestHeaderLayer::if_not_present(
+                    "x-forwarded-for"
+                        .parse()
+                        .expect("Header name should be valid"),
+                    |request: &Request<_>| {
+                        let connect_info = request
+                            .extensions()
+                            .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()?;
+
+                        connect_info.ip().to_string().parse().ok()
+                    },
+                ))
                 .layer(SetRequestIdLayer::x_request_id(MakeRequestUlid))
                 .layer(
                     TraceLayer::new_for_http()
@@ -106,7 +129,10 @@ where
                             );
                         }),
                 )
-                .layer(TimeoutLayer::new(Duration::from_mins(1)))
+                .layer(TimeoutLayer::with_status_code(
+                    StatusCode::REQUEST_TIMEOUT,
+                    Duration::from_mins(1),
+                ))
                 .layer(PropagateRequestIdLayer::x_request_id())
                 .layer(SetResponseHeaderLayer::appending(
                     header::DATE,
