@@ -1,11 +1,15 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use include_dir::{Dir, include_dir};
 use libsql::Builder;
 use once_cell::sync::OnceCell;
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 
 use crate::cli::DatabaseUrl;
 
@@ -19,7 +23,7 @@ pub struct Database {
 }
 impl Database {
     pub async fn init(url: &DatabaseUrl) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
-        let now = std::time::Instant::now();
+        let now = Instant::now();
         debug!(?url, "Initializing database");
         let db = match url {
             DatabaseUrl::Memory => Builder::new_local(":memory:").build().await?,
@@ -72,7 +76,7 @@ impl Database {
     }
 
     async fn run_migrations(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let now = std::time::Instant::now();
+        let now = Instant::now();
 
         let mut migrations = MIGRATIONS
             .entries()
@@ -169,43 +173,78 @@ impl Database {
         Self::global().conn.clone()
     }
 
+    #[tracing::instrument(name = "query", skip(params), fields(query))]
     pub async fn query<T: serde::de::DeserializeOwned>(
         query: &str,
         params: impl libsql::params::IntoParams,
     ) -> Result<Vec<T>, DatabaseError> {
-        let mut rows = Self::conn().lock().await.query(query, params).await?;
+        let (mut rows, start) = Self::execute_query(query, params).await?;
         let mut results = vec![];
         while let Ok(Some(row)) = rows.next().await {
             let result = libsql::de::from_row::<T>(&row)?;
             results.push(result);
         }
+        trace_query(query, start);
         Ok(results)
     }
 
+    #[tracing::instrument(name = "query", skip(params), fields(query))]
     pub async fn query_one<T: serde::de::DeserializeOwned>(
         query: &str,
         params: impl libsql::params::IntoParams,
     ) -> Result<Option<T>, DatabaseError> {
-        let mut rows = Self::conn().lock().await.query(query, params).await?;
+        let (mut rows, start) = Self::execute_query(query, params).await?;
         let Ok(Some(row)) = rows.next().await else {
             return Ok(None);
         };
         let result = libsql::de::from_row::<T>(&row)?;
+        trace_query(query, start);
         Ok(Some(result))
     }
 
+    #[tracing::instrument(name = "query", skip(params), fields(query))]
     pub async fn query_first_columns(
         query: &str,
         params: impl libsql::params::IntoParams,
     ) -> Result<Vec<libsql::Value>, DatabaseError> {
-        let mut rows = Self::conn().lock().await.query(query, params).await?;
+        let (mut rows, start) = Self::execute_query(query, params).await?;
         let mut results = vec![];
         while let Ok(Some(row)) = rows.next().await {
             if let Ok(val) = row.get_value(0) {
                 results.push(val);
             }
         }
+        trace_query(query, start);
         Ok(results)
+    }
+
+    #[tracing::instrument(skip(params), fields(query))]
+    pub async fn execute_query(
+        query: &str,
+        params: impl libsql::params::IntoParams,
+    ) -> Result<(libsql::Rows, Instant), libsql::Error> {
+        let conn = Self::conn();
+        let lock = conn.lock().await;
+        let start = Instant::now();
+        let rows = lock.query(query, params).await?;
+        drop(lock);
+        drop(conn);
+        Ok((rows, start))
+    }
+}
+
+fn trace_query(query: &str, started: Instant) {
+    static SLOW_QUERY_THRESHOLD: Duration = Duration::from_millis(20);
+
+    let took = started.elapsed();
+
+    if took > SLOW_QUERY_THRESHOLD {
+        let query = query.replace('\n', " ");
+        let query = query.trim();
+
+        warn!(?query, ?took, "slow query complete");
+    } else if cfg!(debug_assertions) {
+        trace!(?query, ?took, "query complete");
     }
 }
 
