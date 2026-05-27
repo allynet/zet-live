@@ -30,8 +30,8 @@ export function BottomSheet({
   onClose,
   children,
   minimizedBody,
-  expandedHeight = "40vh",
-  maximizedHeight = "100vh",
+  expandedHeight = "40dvh",
+  maximizedHeight = "95dvh",
 }: Props) {
   const [sheetState, setSheetState] = useState<SheetState>("expanded");
   const [rendered, setRendered] = useState(false);
@@ -123,7 +123,7 @@ export function BottomSheet({
             }
           }
         }}
-        class="pointer-events-auto m-2 mb-0 grid w-full max-w-md grid-rows-[auto_1fr_auto] overflow-hidden rounded-t-xl bg-white/90 shadow-lg backdrop-blur-sm"
+        class="pointer-events-auto grid w-full max-w-md grid-rows-[auto_1fr_auto] overflow-hidden rounded-t-xl bg-white/90 shadow-lg backdrop-blur-sm"
         data-minimized={minimized ? "true" : "false"}
         data-maximized={maximized ? "true" : "false"}
       >
@@ -208,7 +208,7 @@ export function BottomSheet({
             opacity: minimized ? 0 : 1,
           }}
           transition={SPRING}
-          class="max-h-full overflow-auto"
+          class="max-h-full overflow-auto overscroll-y-contain"
         >
           {children}
         </motion.div>

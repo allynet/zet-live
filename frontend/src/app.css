@@ -8,6 +8,10 @@ body,
   padding: 0;
 }
 
+html {
+  overscroll-behavior-y: contain;
+}
+
 body,
 .maplibregl-map {
   font-family: "IosevkAllyP", sans-serif;

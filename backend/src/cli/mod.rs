@@ -178,7 +178,13 @@ impl DatabaseUrl {
                     .find(|x| {
                         matches!(
                             x.0.to_lowercase().as_str(),
-                            "token" | "auth_token" | "authtoken"
+                            "token"
+                                | "auth_token"
+                                | "authtoken"
+                                | "accesstoken"
+                                | "access_token"
+                                | "accesskey"
+                                | "access_key"
                         )
                     })
                     .map(|x| (x.0.to_string(), x.1.to_string()));

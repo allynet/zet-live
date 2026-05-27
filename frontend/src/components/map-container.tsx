@@ -10,6 +10,9 @@ import MapGL, {
 import { useRef, useCallback, useEffect } from "preact/hooks";
 import type { StyleSpecification } from "maplibre-gl";
 import mapStyle3d from "@/data/maps/style/3d.json";
+import mapStyle3dDark from "@/data/maps/style/3d.dark.json";
+import mapStyleFlat from "@/data/maps/style/flat.json";
+import mapStyleSatellite from "@/data/maps/style/satellite.json";
 import {
   vehiclesSignal,
   followingVehicleIdSignal,
@@ -21,11 +24,25 @@ import {
   bearingSignal,
   maxBoundsSignal,
   flyToTargetSignal,
+  mapStyleIdSignal,
+  type MapStyleId,
 } from "@/state";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
 import { VehicleMarker } from "./vehicle-marker";
+import { MapStyleSwitcher } from "./map-style-switcher";
 import { useSignalState } from "@/hooks/use-signal-state";
+import { useGeolocationPermission } from "@/hooks/use-geolocation-permission";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { calculateLatOffset } from "@/utils/map";
+
+const styleMap = new Map<MapStyleId, StyleSpecification>([
+  ["3d", mapStyle3d as StyleSpecification],
+  ["3d.dark", mapStyle3dDark as StyleSpecification],
+  ["flat", mapStyleFlat as StyleSpecification],
+  ["satellite", mapStyleSatellite as StyleSpecification],
+]);
+
+const mapStyle = styleMap.get(mapStyleIdSignal.value) ?? (mapStyle3d as StyleSpecification);
 
 function createArrowHeadImage(color: string): Promise<HTMLImageElement> {
   const svg = `
@@ -55,12 +72,13 @@ export function MapContainer() {
   const bearing = useSignalState(bearingSignal);
   const flyToTarget = useSignalState(flyToTargetSignal);
   const followEnabled = useSignalState(followEnabledSignal);
+  const geolocPermission = useGeolocationPermission();
 
   const selectedVehicle = followingVehicleId ? (vehicles.get(followingVehicleId) ?? null) : null;
   const nextStopId = selectedVehicle?.nextStopId ?? null;
 
   const handleVehicleClick = useCallback((rawVehicleId: string, tripId: string) => {
-    selectVehicle(rawVehicleId, tripId);
+    selectVehicle(rawVehicleId, tripId, true);
   }, []);
 
   const handleClick = useCallback((e: MapLayerMouseEvent) => {
@@ -108,8 +126,10 @@ export function MapContainer() {
     const map = mapRef.current?.getMap();
     if (!map) return;
 
+    const offset = calculateLatOffset(mapRef.current?.getMap());
+
     map.easeTo({
-      center: [vehicle.lng, vehicle.lat],
+      center: [vehicle.lng, vehicle.lat - offset],
       duration: 500,
     });
   }, [followEnabled, followingVehicleId, vehicles]);
@@ -137,10 +157,11 @@ export function MapContainer() {
 
   useEffect(() => {
     if (!flyToTarget) return;
+    const offset = calculateLatOffset(mapRef.current?.getMap());
     mapRef.current?.flyTo({
-      center: [flyToTarget.longitude, flyToTarget.latitude],
+      center: [flyToTarget.longitude, flyToTarget.latitude - offset],
       duration: 1000,
-      // zoom: 15,
+      // zoom: 16,
     });
     flyToTargetSignal.value = null;
   }, [flyToTarget]);
@@ -195,157 +216,129 @@ export function MapContainer() {
   const isFollowingSomething =
     followingVehicleId !== null || followingTripIds !== null || followingRoute !== null;
 
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    map.setLayoutProperty("route-stops-label", "text-allow-overlap", isFollowingSomething);
+    map.setLayoutProperty("route-stops-label", "text-ignore-placement", isFollowingSomething);
+  }, [isFollowingSomething]);
+
   return (
-    <MapGL
-      ref={mapRef}
-      mapStyle={mapStyle3d as StyleSpecification}
-      initialViewState={{
-        longitude: 16,
-        latitude: 45.8,
-        zoom: 12,
-      }}
-      hash
-      antialias
-      interactiveLayerIds={["route-stops-label"]}
-      onClick={handleClick}
-      onLoad={onLoad}
-      onRotate={onRotate}
-      onDragStart={onDragStart}
-      class="h-full w-full"
-      style={{ "--bearing": bearing }}
-    >
-      <NavigationControl visualizeZoom visualizePitch />
+    <div class="relative h-full w-full">
+      <MapGL
+        ref={mapRef}
+        mapStyle={mapStyle}
+        initialViewState={{
+          longitude: 16,
+          latitude: 45.8,
+          zoom: 12,
+        }}
+        hash
+        antialias
+        interactiveLayerIds={["route-stops-label"]}
+        onClick={handleClick}
+        onLoad={onLoad}
+        onRotate={onRotate}
+        onDragStart={onDragStart}
+        class="h-full w-full"
+        style={{ "--bearing": bearing }}
+      >
+        <NavigationControl visualizeZoom visualizePitch />
 
-      <GeolocateControl
-        positionOptions={{ enableHighAccuracy: true }}
-        trackUserLocation
-        showAccuracyCircle
-        showUserLocation
-      />
-
-      {Array.from(vehicles.values()).map((v) => {
-        const isFollowing =
-          followingVehicleId === v.getMapId() || (followingTripIds?.has(v.tripId) ?? false);
-
-        const hasFollowing = followingVehicleId !== null || followingTripIds !== null;
-
-        return (
-          <Marker key={v.getMapId()} longitude={v.lng} latitude={v.lat}>
-            <VehicleMarker
-              vehicle={v}
-              isFollowing={isFollowing}
-              isNotFollowing={hasFollowing && !isFollowing}
-              onClick={() => {
-                handleVehicleClick(v.id, v.tripId);
-              }}
-            />
-          </Marker>
-        );
-      })}
-
-      <Source id="delta-move-lines" type="geojson" data={deltaMoveFeatures}>
-        <Layer
-          id="delta-move-lines"
-          type="line"
-          paint={{
-            "line-width": 5,
-            "line-color": ["get", "color"],
-            "line-opacity": 0.5,
-          }}
-          layout={{
-            "line-join": "round",
-            "line-cap": "round",
-          }}
+        <GeolocateControl
+          key={
+            geolocPermission === "granted"
+              ? "geo-granted"
+              : geolocPermission === "denied"
+                ? "geo-denied"
+                : "geo-other"
+          }
+          positionOptions={{ enableHighAccuracy: true }}
+          trackUserLocation
+          showAccuracyCircle
+          showUserLocation
         />
-        <Layer
-          id="delta-move-lines-arrow"
-          type="symbol"
-          layout={{
-            "symbol-placement": "line",
-            "symbol-avoid-edges": false,
-            "symbol-spacing": 1,
-            "icon-image": "arrow-head",
-            "text-ignore-placement": true,
-            "icon-size": 0.25,
-            visibility: "visible",
-          }}
-        />
-      </Source>
 
-      <Source id="route-stops" type="geojson" data={routeStopsFeatures}>
-        <Layer
-          id="route-stops-label"
-          type="symbol"
-          layout={{
-            "text-font": ["IosevkAlly Bold"],
-            "text-field": ["get", "name"],
-            "text-variable-anchor": ["top", "bottom", "left", "right"],
-            "text-radial-offset": 0.5,
-            "text-justify": "auto",
-            "text-size": ["interpolate", ["linear"], ["zoom"], 0, 7, 10, 9, 12, 13, 22, 30],
-            "text-allow-overlap": isFollowingSomething,
-            "text-ignore-placement": isFollowingSomething,
-          }}
-          paint={{
-            "text-color": ["case", ["boolean", ["get", "isNext"]], "#155dfc", "#000"],
-            "text-halo-color": "#fff",
-            "text-halo-width": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              10,
-              ["case", ["boolean", ["get", "isNext"]], 2, 1],
-              14,
-              ["case", ["boolean", ["get", "isNext"]], 4, 3],
-              18,
-              ["case", ["boolean", ["get", "isNext"]], 5, 3],
-              22,
-              ["case", ["boolean", ["get", "isNext"]], 8, 6],
-            ],
-            "text-halo-blur": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              10,
-              ["case", ["boolean", ["get", "isNext"]], 0, 0],
-              14,
-              ["case", ["boolean", ["get", "isNext"]], 1, 2],
-              18,
-              ["case", ["boolean", ["get", "isNext"]], 1, 2],
-              22,
-              ["case", ["boolean", ["get", "isNext"]], 2, 3],
-            ],
-          }}
-        />
-      </Source>
+        {Array.from(vehicles.values()).map((v) => {
+          const isFollowing =
+            followingVehicleId === v.getMapId() || (followingTripIds?.has(v.tripId) ?? false);
 
-      <Source id="current-following-route" type="geojson" data={followingRouteFeatures}>
-        <Layer
-          id="current-following-route"
-          type="line"
-          paint={{
-            "line-width": 5,
-            "line-color": ["get", "color"],
-            "line-opacity": 0.5,
-          }}
-          layout={{
-            "line-join": "round",
-            "line-cap": "round",
-          }}
-        />
-        <Layer
-          id="current-following-route-arrow"
-          type="symbol"
-          layout={{
-            "symbol-placement": "line",
-            "symbol-spacing": 1,
-            "icon-allow-overlap": true,
-            "icon-image": "arrow-head",
-            "icon-size": 0.25,
-            visibility: "visible",
-          }}
-        />
-      </Source>
-    </MapGL>
+          const hasFollowing = followingVehicleId !== null || followingTripIds !== null;
+
+          return (
+            <Marker key={v.getMapId()} longitude={v.lng} latitude={v.lat}>
+              <VehicleMarker
+                vehicle={v}
+                isFollowing={isFollowing}
+                isNotFollowing={hasFollowing && !isFollowing}
+                onClick={() => {
+                  handleVehicleClick(v.id, v.tripId);
+                }}
+              />
+            </Marker>
+          );
+        })}
+
+        <Source id="delta-move-lines" type="geojson" data={deltaMoveFeatures}>
+          <Layer
+            id="delta-move-lines"
+            type="line"
+            paint={{
+              "line-width": 5,
+              "line-color": ["get", "color"],
+              "line-opacity": 0.5,
+            }}
+            layout={{
+              "line-join": "round",
+              "line-cap": "round",
+            }}
+          />
+          <Layer
+            id="delta-move-lines-arrow"
+            type="symbol"
+            layout={{
+              "symbol-placement": "line",
+              "symbol-avoid-edges": false,
+              "symbol-spacing": 1,
+              "icon-image": "arrow-head",
+              "text-ignore-placement": true,
+              "icon-size": 0.25,
+              visibility: "visible",
+            }}
+          />
+        </Source>
+
+        <Source id="route-stops" type="geojson" data={routeStopsFeatures} />
+
+        <Source id="current-following-route" type="geojson" data={followingRouteFeatures}>
+          <Layer
+            id="current-following-route"
+            type="line"
+            paint={{
+              "line-width": 5,
+              "line-color": ["get", "color"],
+              "line-opacity": 0.5,
+            }}
+            layout={{
+              "line-join": "round",
+              "line-cap": "round",
+            }}
+          />
+          <Layer
+            id="current-following-route-arrow"
+            type="symbol"
+            layout={{
+              "symbol-placement": "line",
+              "symbol-spacing": 1,
+              "icon-allow-overlap": true,
+              "icon-image": "arrow-head",
+              "icon-size": 0.25,
+              visibility: "visible",
+            }}
+          />
+        </Source>
+      </MapGL>
+      <MapStyleSwitcher />
+    </div>
   );
 }
