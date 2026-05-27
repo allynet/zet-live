@@ -15,6 +15,12 @@ export default defineConfig({
         chunkFileNames: "_static/chunk.[name].[hash].js",
         entryFileNames: "_static/entry.[name].[hash].js",
         manualChunks(id) {
+          if (id.includes("/style/") && id.endsWith(".json")) {
+            const name = id.split("/").pop()!.split(".").slice(0, -1).join(".");
+
+            return `map-style-${name}`;
+          }
+
           if (id.includes("/node_modules/@vis.gl/") || id.includes("/node_modules/maplibre-gl/")) {
             return "map";
           }
