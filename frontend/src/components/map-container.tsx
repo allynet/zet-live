@@ -73,6 +73,7 @@ export function MapContainer() {
   const flyToTarget = useSignalState(flyToTargetSignal);
   const followEnabled = useSignalState(followEnabledSignal);
   const geolocPermission = useGeolocationPermission();
+  const maxBounds = useSignalState(maxBoundsSignal);
 
   const selectedVehicle = followingVehicleId ? (vehicles.get(followingVehicleId) ?? null) : null;
   const nextStopId = selectedVehicle?.nextStopId ?? null;
@@ -150,10 +151,10 @@ export function MapContainer() {
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
-    if (map && maxBoundsSignal.value) {
-      map.setMaxBounds(maxBoundsSignal.value);
+    if (map) {
+      map.setMaxBounds(maxBounds);
     }
-  }, []);
+  }, [maxBounds]);
 
   useEffect(() => {
     if (!flyToTarget) return;
