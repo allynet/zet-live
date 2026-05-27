@@ -5,5 +5,8 @@ fn main() -> Result<()> {
     config.type_attribute(".", "#[serde(rename_all = \"camelCase\")]");
     config.include_file("_gtfs_realtime.rs");
     config.compile_protos(&["protobuf/gtfs-realtime.proto"], &["protobuf/"])?;
+
+    build_info_build::build_script();
+
     Ok(())
 }

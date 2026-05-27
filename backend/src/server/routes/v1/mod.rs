@@ -21,6 +21,7 @@ use crate::{
 };
 
 mod _entity;
+mod app;
 mod feed;
 mod schedule;
 mod vehicles;
@@ -31,6 +32,7 @@ pub fn create_v1_router() -> Router {
     tokio::task::spawn(feed_listener(app_state.clone()));
 
     Router::new()
+        .route("/version", get(app::get_version))
         .route("/vehicles", get(vehicles::get_all))
         .route("/feed", get(feed::get_feed))
         .route("/ws", get(ws::websocket_handler))

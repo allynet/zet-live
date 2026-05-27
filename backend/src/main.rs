@@ -1,7 +1,10 @@
 use cli::{CliCommands, Config};
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
+
+use crate::config::project::ProjectConfig;
 
 mod cli;
+mod config;
 mod database;
 mod entity;
 mod http_client;
@@ -33,7 +36,14 @@ fn main() {
         error!(?e, "Failed to update log level");
     }
 
-    info!("Running zet-live");
+    info!(version = %ProjectConfig::app_version(), "Running zet-live");
+
+    debug!(
+        app = ProjectConfig::app_name_with_version(),
+        built = ProjectConfig::build_date(),
+        rustc_version = ProjectConfig::rustc_version(),
+        "Build info"
+    );
 
     trace!(?config, "CLI args initialized");
 

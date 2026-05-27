@@ -1,6 +1,6 @@
 [package]
 name = "zet-live"
-version = "0.1.0"
+version = "0.2.1"
 edition = "2024"
 
 [dependencies]
@@ -42,6 +42,7 @@ validator = { version = "0.20.0", features = ["derive"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 hex = "0.4.3"
 webpki-root-certs = "1.0.7"
+build-info = "0.0.44"
 
 [lints.clippy]
 nursery = { level = "warn", priority = -1 }
@@ -62,3 +63,4 @@ codegen-units = 1
 
 [build-dependencies]
 prost-build = "0.14.3"
+build-info-build = "0.0.44"
