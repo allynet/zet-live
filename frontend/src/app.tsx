@@ -8,6 +8,7 @@ import { useWebSocket } from "@/hooks/use-websocket";
 import { useStops } from "@/hooks/use-stops";
 import { useSignalState } from "@/hooks/use-signal-state";
 import { useUrlSync } from "@/hooks/use-url-sync";
+import { useVersionCheck } from "@/hooks/use-version-check";
 import {
   selectedStopSignal,
   vehiclesSignal,
@@ -25,6 +26,7 @@ export function App() {
   useWebSocket();
   useStops();
   useUrlSync();
+  useVersionCheck();
 
   const followingVehicleId = useSignalState(followingVehicleIdSignal);
   const vehicles = useSignalState(vehiclesSignal);
