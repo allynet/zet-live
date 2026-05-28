@@ -32,16 +32,28 @@ export function StatusBar() {
   return (
     <button
       type="button"
+      aria-label="Connection status"
+      aria-expanded={expanded}
+      aria-controls="connection-status-panel"
+      aria-haspopup="menu"
+      aria-roledescription="connection status"
+      role="button"
       onClick={() => {
         setExpanded((e) => !e);
       }}
-      class="fixed top-2 left-2 z-[1000] flex cursor-pointer items-center gap-2 rounded-lg bg-white/80 px-2 py-1.5 text-xs text-gray-800 shadow-md backdrop-blur-sm select-none"
+      class="fixed top-2 left-2 z-1000 flex cursor-pointer items-center gap-2 rounded-lg bg-white/80 px-2 py-1.5 text-xs text-gray-800 shadow-md backdrop-blur-sm select-none"
     >
       <span
         class={`inline-block h-2 w-2 shrink-0 rounded-full ${wsConnected ? "bg-green-500" : "animate-pulse bg-red-500"}`}
       />
       {expanded && (
-        <>
+        <div
+          aria-label="Connection status details"
+          aria-modal="true"
+          role="menu"
+          id="connection-status-panel"
+          class="flex items-center gap-2"
+        >
           <span>{wsConnected ? "Connected" : "Disconnected"}</span>
           <span class="text-gray-400">|</span>
           <span>Last update: {ago}</span>
@@ -51,7 +63,7 @@ export function StatusBar() {
               <span class="text-red-600">{lastError}</span>
             </>
           )}
-        </>
+        </div>
       )}
     </button>
   );

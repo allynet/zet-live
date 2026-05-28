@@ -65,14 +65,28 @@ export function useStops() {
   }, [fetchStops]);
 }
 
-function areaOf(stops: StopV1[]) {
-  const lats = stops.map((s) => s.lat);
-  const lngs = stops.map((s) => s.lng);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
+type StopGroup = {
+  stops: StopV1[];
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+};
+
+function mergedBboxArea(group: StopGroup, stop: StopV1) {
+  const minLat = Math.min(group.minLat, stop.lat);
+  const maxLat = Math.max(group.maxLat, stop.lat);
+  const minLng = Math.min(group.minLng, stop.lng);
+  const maxLng = Math.max(group.maxLng, stop.lng);
   return (maxLat - minLat) * (maxLng - minLng);
+}
+
+function extendGroup(group: StopGroup, stop: StopV1) {
+  group.stops.push(stop);
+  group.minLat = Math.min(group.minLat, stop.lat);
+  group.maxLat = Math.max(group.maxLat, stop.lat);
+  group.minLng = Math.min(group.minLng, stop.lng);
+  group.maxLng = Math.max(group.maxLng, stop.lng);
 }
 
 function computeGroupedStops() {
@@ -89,29 +103,36 @@ function computeGroupedStops() {
   }, {});
 
   requestIdleCallback(() => {
-    const stopsByDistance = Object.entries(stopsByName).reduce<
-      Record<string, { stops: StopV1[] }[]>
-    >((acc, [name, stops]) => {
-      const grouped = [] as { stops: StopV1[] }[];
+    const stopsByDistance = Object.entries(stopsByName).reduce<Record<string, StopGroup[]>>(
+      (acc, [name, stops]) => {
+        const grouped: StopGroup[] = [];
 
-      for (const stop of stops) {
-        if (activeStopIds.size > 0 && !activeStopIds.has(stop.id)) {
-          continue;
+        for (const stop of stops) {
+          if (activeStopIds.size > 0 && !activeStopIds.has(stop.id)) {
+            continue;
+          }
+
+          const closeEnough = grouped.find((g) => mergedBboxArea(g, stop) < 1e-7);
+
+          if (closeEnough) {
+            extendGroup(closeEnough, stop);
+            continue;
+          }
+
+          grouped.push({
+            stops: [stop],
+            minLat: stop.lat,
+            maxLat: stop.lat,
+            minLng: stop.lng,
+            maxLng: stop.lng,
+          });
         }
 
-        const closeEnough = grouped.find((x) => areaOf([stop, ...x.stops]) < 1e-7);
-
-        if (closeEnough) {
-          closeEnough.stops.push(stop);
-          continue;
-        }
-
-        grouped.push({ stops: [stop] });
-      }
-
-      acc[name] = grouped;
-      return acc;
-    }, {});
+        acc[name] = grouped;
+        return acc;
+      },
+      {},
+    );
 
     requestIdleCallback(() => {
       const result = Object.values(stopsByDistance)

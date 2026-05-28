@@ -75,8 +75,12 @@ export function BottomSheet({
   if (!rendered) return null;
 
   return (
-    <div class="pointer-events-none fixed right-0 bottom-0 left-0 z-[999] flex justify-center">
+    <div class="pointer-events-none fixed right-0 bottom-0 left-0 z-999 flex justify-center">
       <motion.div
+        aria-role="dialog"
+        aria-label="Bottom sheet"
+        aria-modal="true"
+        role="dialog"
         ref={sheetRef}
         style={{ y }}
         animate={{

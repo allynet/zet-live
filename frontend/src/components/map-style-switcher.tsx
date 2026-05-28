@@ -30,9 +30,15 @@ export function MapStyleSwitcher() {
   }, [open]);
 
   return (
-    <div ref={panelRef} class="absolute top-14 left-2 z-[1000]">
+    <div ref={panelRef} class="absolute top-14 left-2 z-1000">
       <button
         type="button"
+        aria-label="Change map style"
+        aria-expanded={open}
+        aria-controls="map-style-panel"
+        aria-haspopup="menu"
+        aria-roledescription="map style switcher"
+        role="button"
         onClick={() => {
           setOpen((o) => !o);
         }}
@@ -56,11 +62,20 @@ export function MapStyleSwitcher() {
       </button>
 
       {open && (
-        <div class="mt-1 flex flex-col gap-0.5 rounded-lg bg-white/90 p-1 shadow-md backdrop-blur-sm">
+        <div
+          aria-label="Map style panel"
+          aria-modal="true"
+          role="menu"
+          class="mt-1 flex flex-col gap-0.5 rounded-lg bg-white/90 p-1 shadow-md backdrop-blur-sm"
+          id="map-style-panel"
+        >
           {STYLES.map((s) => (
             <button
               key={s.id}
               type="button"
+              aria-label={`Select ${s.label} map style`}
+              aria-selected={currentStyle === s.id}
+              role="menuitem"
               onClick={() => {
                 setMapStyleId(s.id);
                 setOpen(false);

@@ -14,6 +14,7 @@ export function useGeolocationPermission(): GeolocationPermissionState {
       if (mounted) setState(value);
     }
 
+    let onChange: () => void = () => {};
     async function setup() {
       if (!navigator.geolocation) {
         intervalId = setInterval(() => {
@@ -41,7 +42,7 @@ export function useGeolocationPermission(): GeolocationPermissionState {
 
           update(mapState(permissionStatus.state));
 
-          const onChange = () => {
+          onChange = () => {
             if (permissionStatus) {
               update(mapState(permissionStatus.state));
             }
@@ -61,7 +62,7 @@ export function useGeolocationPermission(): GeolocationPermissionState {
     return () => {
       mounted = false;
       if (permissionStatus) {
-        permissionStatus.removeEventListener("change", () => {});
+        permissionStatus.removeEventListener("change", onChange);
       }
       if (intervalId !== null) {
         clearInterval(intervalId);
