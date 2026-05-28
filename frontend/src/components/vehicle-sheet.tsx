@@ -42,21 +42,24 @@ export function VehicleSheet({
     : null;
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      const $el = document.querySelector<HTMLElement>(
-        `.bottom-vehicle-stop-list [data-is-next="true"]`,
-      );
-      if (!$el) {
-        return;
-      }
-      $el.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
+    let timeout = requestIdleCallback(() => {
+      timeout = requestAnimationFrame(() => {
+        const $el = document.querySelector<HTMLElement>(
+          `.bottom-vehicle-stop-list [data-is-next="true"]`,
+        );
+        if (!$el) {
+          return;
+        }
+        $el.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
       });
-    }, 100);
+    });
 
     return () => {
-      clearTimeout(timeout);
+      cancelIdleCallback(timeout);
+      cancelAnimationFrame(timeout);
     };
   }, [vehicle.id]);
 
