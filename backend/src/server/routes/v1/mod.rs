@@ -79,6 +79,9 @@ async fn feed_listener(app_state: Arc<V1AppState>) {
     }
 }
 
+pub static SIMPLE_STOPS: LazyLock<RwLock<Vec<Vec<MixedValue>>>> =
+    LazyLock::new(|| RwLock::new(Vec::new()));
+
 #[allow(clippy::too_many_lines)]
 fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
     let active_stops_feed = feed.clone();
@@ -126,6 +129,28 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             {
                 error!(?e, "Failed to execute batch statements for active trips");
                 return;
+            }
+
+            {
+                if let Ok(results) =
+                    Database::query::<crate::proto::gtfs_schedule::data::SimpleStop>(
+                        "
+                        SELECT DISTINCT
+                            s.stop_id, s.stop_name, s.longitude, s.latitude
+                        FROM live_trips lt
+                        LEFT JOIN gtfs_stop_times st on st.trip_id = lt.trip_id
+                        LEFT JOIN gtfs_stops s on s.stop_id = st.stop_id
+                        ",
+                        libsql::params![],
+                    )
+                    .await
+                {
+                    let stops = results
+                        .into_iter()
+                        .map(crate::proto::gtfs_schedule::data::stop::SimpleStop::into_vec)
+                        .collect::<Vec<_>>();
+                    SIMPLE_STOPS.write().await.clone_from(&stops);
+                }
             }
 
             trace!(took = ?stmts_start.elapsed(), "Updated active trips");
