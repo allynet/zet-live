@@ -74,6 +74,7 @@ export function MapContainer() {
   const deltaMoveLines = useSignalState(deltaMoveLinesSignal);
   const displayedStops = useSignalState(displayedStopsSignal);
   const followingRoute = useSignalState(followingRouteSignal);
+  const maxBounds = useSignalState(maxBoundsSignal);
   const geolocPermission = useGeolocationPermission();
 
   const selectedVehicle = followingVehicleId ? (vehicles.get(followingVehicleId) ?? null) : null;
@@ -108,6 +109,7 @@ export function MapContainer() {
       map.addImage("arrow-head", arrowImage);
     }
 
+    map.setMaxBounds(maxBoundsSignal.value);
     setIconsReady(true);
   }, []);
 
@@ -156,12 +158,11 @@ export function MapContainer() {
     });
   }, []);
 
-  useSignalEffect(() => {
+  useEffect(() => {
     const map = mapRef.current?.getMap();
-    if (map) {
-      map.setMaxBounds(maxBoundsSignal.value);
-    }
-  });
+    if (!map) return;
+    map.setMaxBounds(maxBounds);
+  }, [maxBounds]);
 
   useSignalEffect(() => {
     const target = flyToTargetSignal.value;
