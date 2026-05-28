@@ -40,8 +40,13 @@ function eggRadius(
   return base;
 }
 
-function createVehicleIcon(routeId: string, bearing: number | null, color: string): ImageData {
-  const dpr = window.devicePixelRatio || 1;
+function createVehicleIcon(
+  routeId: string,
+  bearing: number | null,
+  color: string,
+  pixelRatio: number,
+): ImageData {
+  const dpr = pixelRatio;
   const shadowBlur = 3 * dpr;
   const pad = 1 * dpr;
   const extraR = POINT_EXTRA_RADIUS * dpr;
@@ -122,11 +127,13 @@ export type VehicleIconDescriptor = {
 };
 
 export function ensureVehicleIcons(map: MaplibreMap, icons: VehicleIconDescriptor[]) {
+  const pixelRatio = window.devicePixelRatio || 1;
+
   for (const icon of icons) {
     const name = vehicleIconName(icon.routeId, icon.color, icon.qBearing);
     if (!map.hasImage(name)) {
-      const imageData = createVehicleIcon(icon.routeId, icon.qBearing, icon.color);
-      map.addImage(name, imageData);
+      const imageData = createVehicleIcon(icon.routeId, icon.qBearing, icon.color, pixelRatio);
+      map.addImage(name, imageData, { pixelRatio });
     }
   }
 }
