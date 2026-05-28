@@ -80,7 +80,7 @@ export function useUrlSync() {
     if (!initializedRef.current) return;
     if (isRestoringRef.current) return;
 
-    if (debounceRef.current != null) {
+    if (debounceRef.current !== null) {
       clearTimeout(debounceRef.current);
     }
 
@@ -94,7 +94,7 @@ export function useUrlSync() {
 
   useEffect(() => {
     return () => {
-      if (debounceRef.current != null) {
+      if (debounceRef.current !== null) {
         clearTimeout(debounceRef.current);
       }
     };

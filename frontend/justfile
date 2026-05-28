@@ -7,6 +7,9 @@ default:
 build:
     bun run build
 
+dev:
+    bun run dev
+
 lint:
     bun run lint:fix
 

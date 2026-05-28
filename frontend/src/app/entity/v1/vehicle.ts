@@ -1,6 +1,41 @@
+/** Indices match `Vehicle::to_simple()` in the backend. */
+const SIMPLE_FIELD = {
+  id: 0,
+  routeId: 1,
+  tripId: 2,
+  latitude: 3,
+  longitude: 4,
+  prevLat: 5,
+  prevLng: 6,
+  nextStopId: 7,
+  nextStopSequence: 8,
+  nextStopArrivalDelay: 9,
+  nextStopArrivalTime: 10,
+  bearing: 11,
+  routeLongName: 12,
+} as const;
+
+const SIMPLE_MIN_LENGTH = 5;
+
+function optionalString(data: (string | number)[], index: number): string | null {
+  if (index >= data.length) return null;
+  const value = data[index];
+  if (value === null) return null;
+  return String(value);
+}
+
+function optionalNumber(data: (string | number)[], index: number): number | null {
+  if (index >= data.length) return null;
+  const value = data[index];
+  if (value === null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export class VehicleV1 {
   id: string;
   routeId: string;
+  routeLongName: string | null;
   tripId: string;
   lat: number;
   lng: number;
@@ -15,6 +50,7 @@ export class VehicleV1 {
   public constructor(data: {
     id: string;
     routeId: string;
+    routeLongName?: string | null;
     tripId: string;
     latitude: number;
     longitude: number;
@@ -28,6 +64,7 @@ export class VehicleV1 {
   }) {
     this.id = data.id;
     this.routeId = data.routeId;
+    this.routeLongName = data.routeLongName ?? null;
     this.tripId = data.tripId;
     this.lat = data.latitude;
     this.lng = data.longitude;
@@ -41,23 +78,24 @@ export class VehicleV1 {
   }
 
   public static fromSimple(data: (string | number)[]) {
-    if (data.length < 5) {
-      throw new Error("Not enough data");
+    if (data.length < SIMPLE_MIN_LENGTH) {
+      throw new Error(`Vehicle simple array needs at least ${SIMPLE_MIN_LENGTH} elements`);
     }
 
     return new VehicleV1({
-      id: String(data[0]),
-      routeId: String(data[1]),
-      tripId: String(data[2]),
-      latitude: Number(data[3]),
-      longitude: Number(data[4]),
-      prevLat: data[5] != null ? Number(data[5]) : null,
-      prevLng: data[6] != null ? Number(data[6]) : null,
-      bearing: data[11] != null ? Number(data[11]) : null,
-      nextStopId: data[7] != null ? String(data[7]) : null,
-      nextStopSequence: data[8] != null ? Number(data[8]) : null,
-      nextStopArrivalDelay: data[9] != null ? Number(data[9]) : null,
-      nextStopArrivalTime: data[10] != null ? Number(data[10]) : null,
+      id: String(data[SIMPLE_FIELD.id]),
+      routeId: String(data[SIMPLE_FIELD.routeId]),
+      tripId: String(data[SIMPLE_FIELD.tripId]),
+      latitude: Number(data[SIMPLE_FIELD.latitude]),
+      longitude: Number(data[SIMPLE_FIELD.longitude]),
+      prevLat: optionalNumber(data, SIMPLE_FIELD.prevLat),
+      prevLng: optionalNumber(data, SIMPLE_FIELD.prevLng),
+      bearing: optionalNumber(data, SIMPLE_FIELD.bearing),
+      nextStopId: optionalString(data, SIMPLE_FIELD.nextStopId),
+      nextStopSequence: optionalNumber(data, SIMPLE_FIELD.nextStopSequence),
+      nextStopArrivalDelay: optionalNumber(data, SIMPLE_FIELD.nextStopArrivalDelay),
+      nextStopArrivalTime: optionalNumber(data, SIMPLE_FIELD.nextStopArrivalTime),
+      routeLongName: optionalString(data, SIMPLE_FIELD.routeLongName),
     });
   }
 
@@ -65,6 +103,7 @@ export class VehicleV1 {
     return {
       id: this.id,
       routeId: this.routeId,
+      routeLongName: this.routeLongName,
       tripId: this.tripId,
       latitude: this.lat,
       longitude: this.lng,

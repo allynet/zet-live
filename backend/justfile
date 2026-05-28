@@ -83,3 +83,9 @@ lint-fix:
 
 fmt: lint-fix
     cargo fmt --all \
+
+migrations-add *name:
+    if [ -z "$name" ]; then \
+        read -p "Enter migration name: " name \
+    fi \
+    touch src/database/migrations/$(date +%s)_$name.sql \

@@ -9,6 +9,7 @@ struct VehicleRow {
     vehicle_id: String,
     route_id: String,
     trip_id: String,
+    route_long_name: Option<String>,
     latitude: f32,
     longitude: f32,
     prev_latitude: Option<f32>,
@@ -26,6 +27,7 @@ impl From<VehicleRow> for Vehicle {
             id: row.vehicle_id,
             route_id: row.route_id,
             trip_id: row.trip_id,
+            route_long_name: row.route_long_name,
             latitude: row.latitude,
             longitude: row.longitude,
             bearing: row.bearing,
@@ -42,9 +44,9 @@ impl From<VehicleRow> for Vehicle {
 #[debug_handler]
 pub async fn get_all(headers: HeaderMap) -> impl IntoResponse {
     let vehicles = Database::query::<VehicleRow>(
-        "SELECT vehicle_id, route_id, trip_id, latitude, longitude, prev_latitude, \
-         prev_longitude, bearing, next_stop_id, next_stop_sequence, next_stop_arrival_delay, \
-         next_stop_arrival_time FROM live_vehicles",
+        "SELECT vehicle_id, route_id, trip_id, route_long_name, latitude, longitude, \
+         prev_latitude, prev_longitude, bearing, next_stop_id, next_stop_sequence, \
+         next_stop_arrival_delay, next_stop_arrival_time FROM live_vehicles",
         libsql::params![],
     )
     .await

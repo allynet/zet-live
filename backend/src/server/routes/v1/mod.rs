@@ -199,6 +199,12 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             arrival_delay: Option<i32>,
         }
 
+        #[derive(serde::Deserialize)]
+        struct RouteLongNameRow {
+            route_id: String,
+            route_long_name: Option<String>,
+        }
+
         let current_stop_sequences = vehicles_feed
             .entity
             .iter()
@@ -288,6 +294,35 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             })
             .collect::<Vec<_>>();
 
+        let route_long_names: HashMap<String, String> = {
+            let route_ids = vehicles
+                .iter()
+                .map(|v| v.route_id.clone())
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+
+            if route_ids.is_empty() {
+                HashMap::new()
+            } else {
+                let placeholders = route_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let query = format!(
+                    "SELECT route_id, NULLIF(route_long_name, '') AS route_long_name FROM \
+                     gtfs_routes WHERE route_id IN ({placeholders})"
+                );
+                let rows = Database::query::<RouteLongNameRow>(
+                    &query,
+                    libsql::params_from_iter(route_ids.iter().map(String::as_str)),
+                )
+                .await
+                .unwrap_or_default();
+
+                rows.into_iter()
+                    .filter_map(|row| row.route_long_name.map(|name| (row.route_id, name)))
+                    .collect()
+            }
+        };
+
         trace!(current_vehicles = ?vehicles.len(), "Updating vehicles");
 
         let previous_positions = {
@@ -317,9 +352,10 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             }
         };
 
-        let vehicles: Vec<Vehicle> = vehicles
+        let vehicles = vehicles
             .into_iter()
             .map(|mut v| {
+                v.route_long_name = route_long_names.get(&v.route_id).cloned();
                 if let Some((prev_lat, prev_lng, prev_bearing)) = previous_positions.get(&v.id) {
                     let dist = haversine_distance(*prev_lat, *prev_lng, v.latitude, v.longitude);
                     if dist < 5.0 {
@@ -338,7 +374,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 }
                 v
             })
-            .collect();
+            .collect::<Vec<_>>();
 
         let stmts_start = Instant::now();
         let stmts = {
@@ -416,6 +452,10 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 let next_stop_arrival_time_sql = vehicle
                     .next_stop_arrival_time
                     .map_or_else(|| "NULL".to_string(), |v| v.to_string());
+                let route_long_name_sql = vehicle.route_long_name.as_deref().map_or_else(
+                    || "NULL".to_string(),
+                    |v| format!("'{}'", v.replace('\'', "''")),
+                );
 
                 let res = writeln!(
                     stmts,
@@ -423,6 +463,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     ( vehicle_id
                     , route_id
                     , trip_id
+                    , route_long_name
                     , latitude
                     , longitude
                     , prev_latitude
@@ -445,10 +486,12 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     , {}
                     , {}
                     , {}
+                    , {}
                     );",
                     vehicle.id.replace('\'', "''"),
                     vehicle.route_id.replace('\'', "''"),
                     vehicle.trip_id.replace('\'', "''"),
+                    route_long_name_sql,
                     vehicle.latitude,
                     vehicle.longitude,
                     prev_lat_sql,

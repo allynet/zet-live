@@ -48,6 +48,7 @@ export function App() {
   let minimizedBody: ComponentChildren | undefined;
 
   if (selectedVehicle) {
+    const routeTitle = selectedVehicle.routeLongName?.trim() || `Route ${selectedVehicle.routeId}`;
     sheetTitle = (
       <div class="flex items-center gap-2">
         <span
@@ -58,7 +59,7 @@ export function App() {
         >
           {selectedVehicle.routeId}
         </span>
-        <span class="text-sm font-bold text-gray-900">Route {selectedVehicle.routeId}</span>
+        <span class="text-sm font-bold text-gray-900">{routeTitle}</span>
       </div>
     );
 

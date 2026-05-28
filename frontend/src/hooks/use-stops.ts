@@ -1,6 +1,13 @@
 import { useEffect, useCallback } from "preact/hooks";
 import { batch } from "@preact/signals";
 import type { V1Message } from "@/app/entity/v1/message";
+import {
+  parseResponse,
+  tripInfoResponseSchema,
+  tripStopTimesResponseSchema,
+  stopArrivalsResponseSchema,
+  stopTripsResponseSchema,
+} from "@/app/entity/v1/api";
 import { VehicleV1 } from "@/app/entity/v1/vehicle";
 import { StopV1 } from "@/app/entity/v1/stop";
 import { API_URL } from "@/app/consts";
@@ -21,7 +28,6 @@ import {
   stopArrivalTimesSignal,
   type GroupedStop,
   type VehicleLocationPair,
-  type StopArrivalTime,
   updateMaxBounds,
 } from "@/state";
 import { getSharedWorker, postWorkerMessage } from "./use-worker";
@@ -140,7 +146,7 @@ export function processMessage(message: V1Message) {
     const newMap = new Map<string, VehicleV1>();
 
     for (const v of vehicles) {
-      if (v.prevLat != null && v.prevLng != null) {
+      if (v.prevLat !== null && v.prevLng !== null) {
         locationPairs.push({
           from: [v.prevLng, v.prevLat],
           to: [v.lng, v.lat],
@@ -228,20 +234,10 @@ export async function fetchFollowingRoute(tripId: string) {
   followingRouteAbort = new AbortController();
   const { signal } = followingRouteAbort;
 
-  const shape = (await fetch(`${API_URL}/v1/schedule/trip-info/${tripId}`, { signal })
+  const raw = await fetch(`${API_URL}/v1/schedule/trip-info/${tripId}`, { signal })
     .then((x) => x.json())
-    .catch(() => null)) as {
-    d: {
-      stopIds: string[];
-      route: [number, number][];
-      stopTimes: {
-        stopId: string;
-        stopSequence: number;
-        stopName: string;
-        arrivalTime: number | null;
-      }[];
-    };
-  } | null;
+    .catch(() => null);
+  const shape = parseResponse(raw, tripInfoResponseSchema);
 
   if (signal.aborted) return;
 
@@ -264,7 +260,7 @@ export async function fetchFollowingRoute(tripId: string) {
 
   const map = new Map<string, number>();
   for (const s of shape.d.stopTimes) {
-    if (s.arrivalTime != null) {
+    if (s.arrivalTime !== null) {
       map.set(s.stopId, s.arrivalTime);
     }
   }
@@ -282,16 +278,10 @@ async function refreshTripStopTimes(tripId: string) {
   followingRouteRefreshAbort = new AbortController();
   const { signal } = followingRouteRefreshAbort;
 
-  const shape = (await fetch(`${API_URL}/v1/schedule/trip-info/${tripId}`, { signal })
+  const raw = await fetch(`${API_URL}/v1/schedule/trip-info/${tripId}`, { signal })
     .then((x) => x.json())
-    .catch(() => null)) as {
-    d: {
-      stopTimes: {
-        stopId: string;
-        arrivalTime: number | null;
-      }[];
-    };
-  } | null;
+    .catch(() => null);
+  const shape = parseResponse(raw, tripStopTimesResponseSchema);
 
   if (signal.aborted) return;
 
@@ -299,7 +289,7 @@ async function refreshTripStopTimes(tripId: string) {
 
   const map = new Map<string, number>();
   for (const s of shape.d.stopTimes) {
-    if (s.arrivalTime != null) {
+    if (s.arrivalTime !== null) {
       map.set(s.stopId, s.arrivalTime);
     }
   }
@@ -315,15 +305,12 @@ async function refreshStopArrivalTimes(stopIds: string[]) {
   for (const stopId of stopIds) {
     queryParams.append("stop", stopId);
   }
-  const res = (await fetch(`${API_URL}/v1/schedule/stop-trips?${queryParams.toString()}`, {
+  const raw = await fetch(`${API_URL}/v1/schedule/stop-trips?${queryParams.toString()}`, {
     signal,
   })
     .then((x) => x.json())
-    .catch(() => null)) as {
-    d: {
-      arrivalTimes: StopArrivalTime[];
-    };
-  } | null;
+    .catch(() => null);
+  const res = parseResponse(raw, stopArrivalsResponseSchema);
 
   if (signal.aborted) return;
 
@@ -340,16 +327,12 @@ export async function fetchStopTrips(stopIds: string[]) {
   for (const stopId of stopIds) {
     queryParams.append("stop", stopId);
   }
-  const trips = (await fetch(`${API_URL}/v1/schedule/stop-trips?${queryParams.toString()}`, {
+  const raw = await fetch(`${API_URL}/v1/schedule/stop-trips?${queryParams.toString()}`, {
     signal,
   })
     .then((x) => x.json())
-    .catch(() => null)) as {
-    d: {
-      stopTrips: string[];
-      arrivalTimes: StopArrivalTime[];
-    };
-  } | null;
+    .catch(() => null);
+  const trips = parseResponse(raw, stopTripsResponseSchema);
 
   if (signal.aborted) return null;
 

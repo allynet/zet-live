@@ -11,3 +11,10 @@ frontend *args:
 backend *args:
     cd backend && \
       just {{ args }}
+
+build:
+    just frontend build \
+      && just backend build \
+
+run *args: build
+    just backend run {{ args }}

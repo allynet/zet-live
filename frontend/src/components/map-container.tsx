@@ -1,5 +1,4 @@
 import MapGL, {
-  Marker,
   NavigationControl,
   GeolocateControl,
   Source,
@@ -7,7 +6,8 @@ import MapGL, {
   type MapRef,
   type MapLayerMouseEvent,
 } from "react-map-gl/maplibre";
-import { useRef, useCallback, useEffect } from "preact/hooks";
+import { useRef, useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { useSignalEffect } from "@preact/signals";
 import type { StyleSpecification } from "maplibre-gl";
 import mapStyle3d from "@/data/maps/style/3d.json";
 import mapStyle3dDark from "@/data/maps/style/3d.dark.json";
@@ -21,19 +21,23 @@ import {
   deltaMoveLinesSignal,
   displayedStopsSignal,
   followingRouteSignal,
-  bearingSignal,
   maxBoundsSignal,
   flyToTargetSignal,
   mapStyleIdSignal,
   type MapStyleId,
 } from "@/state";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
-import { VehicleMarker } from "./vehicle-marker";
 import { MapStyleSwitcher } from "./map-style-switcher";
 import { useSignalState } from "@/hooks/use-signal-state";
 import { useGeolocationPermission } from "@/hooks/use-geolocation-permission";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { calculateLatOffset } from "@/utils/map";
+import {
+  ensureVehicleIcons,
+  quantizeBearing,
+  vehicleIconName,
+  type VehicleIconDescriptor,
+} from "@/utils/vehicle-icons";
 
 const styleMap = new Map<MapStyleId, StyleSpecification>([
   ["3d", mapStyle3d as StyleSpecification],
@@ -63,28 +67,27 @@ function createArrowHeadImage(color: string): Promise<HTMLImageElement> {
 
 export function MapContainer() {
   const mapRef = useRef<MapRef>(null);
+  const [iconsReady, setIconsReady] = useState(false);
   const vehicles = useSignalState(vehiclesSignal);
   const followingVehicleId = useSignalState(followingVehicleIdSignal);
   const followingTripIds = useSignalState(followingTripIdsSignal);
   const deltaMoveLines = useSignalState(deltaMoveLinesSignal);
   const displayedStops = useSignalState(displayedStopsSignal);
   const followingRoute = useSignalState(followingRouteSignal);
-  const bearing = useSignalState(bearingSignal);
-  const flyToTarget = useSignalState(flyToTargetSignal);
-  const followEnabled = useSignalState(followEnabledSignal);
   const geolocPermission = useGeolocationPermission();
-  const maxBounds = useSignalState(maxBoundsSignal);
 
   const selectedVehicle = followingVehicleId ? (vehicles.get(followingVehicleId) ?? null) : null;
   const nextStopId = selectedVehicle?.nextStopId ?? null;
 
-  const handleVehicleClick = useCallback((rawVehicleId: string, tripId: string) => {
-    selectVehicle(rawVehicleId, tripId, true);
-  }, []);
-
   const handleClick = useCallback((e: MapLayerMouseEvent) => {
-    const stopFeature = e.features?.find((x) => x.source === "route-stops");
+    const vehicleFeature = e.features?.find((x) => x.source === "vehicles");
+    if (vehicleFeature) {
+      const props = vehicleFeature.properties as Record<string, unknown>;
+      selectVehicle(String(props.id), String(props.tripId), true);
+      return;
+    }
 
+    const stopFeature = e.features?.find((x) => x.source === "route-stops");
     if (stopFeature) {
       const stopIds = JSON.parse(
         ((stopFeature.properties as Record<string, unknown>)?.ids as string) ?? "[]",
@@ -104,13 +107,8 @@ export function MapContainer() {
     if (!map.hasImage("arrow-head")) {
       map.addImage("arrow-head", arrowImage);
     }
-  }, []);
 
-  const onRotate = useCallback(() => {
-    const map = mapRef.current?.getMap();
-    if (map) {
-      bearingSignal.value = map.getBearing();
-    }
+    setIconsReady(true);
   }, []);
 
   const onDragStart = useCallback(() => {
@@ -119,9 +117,11 @@ export function MapContainer() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!followEnabled || !followingVehicleId) return;
-    const vehicle = vehicles.get(followingVehicleId);
+  useSignalEffect(() => {
+    const followEnabled = followEnabledSignal.value;
+    const fvid = followingVehicleIdSignal.value;
+    if (!followEnabled || !fvid) return;
+    const vehicle = vehiclesSignal.value.get(fvid);
     if (!vehicle) return;
 
     const map = mapRef.current?.getMap();
@@ -133,7 +133,7 @@ export function MapContainer() {
       center: [vehicle.lng, vehicle.lat - offset],
       duration: 500,
     });
-  }, [followEnabled, followingVehicleId, vehicles]);
+  });
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
@@ -147,72 +147,143 @@ export function MapContainer() {
     map.on("mouseleave", "route-stops-label", () => {
       map.getCanvas().style.cursor = "";
     });
+
+    map.on("mouseenter", "vehicle-markers", () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", "vehicle-markers", () => {
+      map.getCanvas().style.cursor = "";
+    });
   }, []);
 
-  useEffect(() => {
+  useSignalEffect(() => {
     const map = mapRef.current?.getMap();
     if (map) {
-      map.setMaxBounds(maxBounds);
+      map.setMaxBounds(maxBoundsSignal.value);
     }
-  }, [maxBounds]);
+  });
 
-  useEffect(() => {
-    if (!flyToTarget) return;
+  useSignalEffect(() => {
+    const target = flyToTargetSignal.value;
+    if (!target) return;
     const offset = calculateLatOffset(mapRef.current?.getMap());
     mapRef.current?.flyTo({
-      center: [flyToTarget.longitude, flyToTarget.latitude - offset],
+      center: [target.longitude, target.latitude - offset],
       duration: 1000,
-      // zoom: 16,
     });
     flyToTargetSignal.value = null;
-  }, [flyToTarget]);
+  });
 
-  const deltaMoveFeatures = {
-    type: "FeatureCollection" as const,
-    features: deltaMoveLines.map((x) => ({
-      type: "Feature" as const,
-      properties: { color: x.color },
-      geometry: {
-        type: "LineString" as const,
-        coordinates: [x.from, x.to],
-      },
-    })),
-  };
+  const vehiclesGeoJson = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: Array.from(vehicles.values()).map((v) => {
+        const mapId = v.getMapId();
+        const isFollowing =
+          followingVehicleId === mapId || (followingTripIds?.has(v.tripId) ?? false);
+        const hasFollowing = followingVehicleId !== null || followingTripIds !== null;
 
-  const routeStopsFeatures = {
-    type: "FeatureCollection" as const,
-    features: displayedStops.map((stop) => ({
-      type: "Feature" as const,
-      properties: {
-        name: stop.name,
-        ids: JSON.stringify(stop.ids),
-        isNext: nextStopId !== null && stop.ids.includes(nextStopId),
-      },
-      geometry: {
-        type: "Point" as const,
-        coordinates: [stop.lng, stop.lat],
-      },
-    })),
-  };
-
-  const followingRouteFeatures = followingRoute
-    ? {
-        type: "FeatureCollection" as const,
-        features: [
-          {
-            type: "Feature" as const,
-            properties: { color: "#f0f" },
-            geometry: {
-              type: "LineString" as const,
-              coordinates: followingRoute,
-            },
+        return {
+          type: "Feature" as const,
+          geometry: { type: "Point" as const, coordinates: [v.lng, v.lat] as [number, number] },
+          properties: {
+            id: v.id,
+            tripId: v.tripId,
+            themeColor: v.routeId.length > 2 ? "blue" : "red",
+            iconName: vehicleIconName(
+              v.routeId,
+              v.routeId.length > 2 ? "blue" : "red",
+              quantizeBearing(v.bearing),
+            ),
+            followingState: isFollowing ? 1 : hasFollowing ? 2 : 0,
+            sortKey: isFollowing ? 2 : hasFollowing ? 0 : 1,
           },
-        ],
+        };
+      }),
+    }),
+    [vehicles, followingVehicleId, followingTripIds],
+  );
+
+  const vehicleIconsToEnsure = useMemo<VehicleIconDescriptor[]>(() => {
+    const unique = new Map<string, VehicleIconDescriptor>();
+    for (const v of vehicles.values()) {
+      const color = v.routeId.length > 2 ? "blue" : "red";
+      const qBearing = quantizeBearing(v.bearing);
+      const key = `${v.routeId}|${color}|${qBearing ?? "none"}`;
+      if (!unique.has(key)) {
+        unique.set(key, {
+          routeId: v.routeId,
+          color,
+          qBearing,
+        });
       }
-    : {
-        type: "FeatureCollection" as const,
-        features: [],
-      };
+    }
+    return [...unique.values()];
+  }, [vehicles]);
+
+  useEffect(() => {
+    if (!iconsReady) return;
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    ensureVehicleIcons(map, vehicleIconsToEnsure);
+  }, [iconsReady, vehicleIconsToEnsure]);
+
+  const deltaMoveFeatures = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: deltaMoveLines.map((x) => ({
+        type: "Feature" as const,
+        properties: { color: x.color },
+        geometry: {
+          type: "LineString" as const,
+          coordinates: [x.from, x.to],
+        },
+      })),
+    }),
+    [deltaMoveLines],
+  );
+
+  const routeStopsFeatures = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: displayedStops.map((stop) => ({
+        type: "Feature" as const,
+        properties: {
+          name: stop.name,
+          ids: JSON.stringify(stop.ids),
+          isNext: nextStopId !== null && stop.ids.includes(nextStopId),
+        },
+        geometry: {
+          type: "Point" as const,
+          coordinates: [stop.lng, stop.lat],
+        },
+      })),
+    }),
+    [displayedStops, nextStopId],
+  );
+
+  const followingRouteFeatures = useMemo(
+    () =>
+      followingRoute
+        ? {
+            type: "FeatureCollection" as const,
+            features: [
+              {
+                type: "Feature" as const,
+                properties: { color: "#f0f" },
+                geometry: {
+                  type: "LineString" as const,
+                  coordinates: followingRoute,
+                },
+              },
+            ],
+          }
+        : {
+            type: "FeatureCollection" as const,
+            features: [],
+          },
+    [followingRoute],
+  );
 
   const isFollowingSomething =
     followingVehicleId !== null || followingTripIds !== null || followingRoute !== null;
@@ -223,6 +294,27 @@ export function MapContainer() {
     map.setLayoutProperty("route-stops-label", "text-allow-overlap", isFollowingSomething);
     map.setLayoutProperty("route-stops-label", "text-ignore-placement", isFollowingSomething);
   }, [isFollowingSomething]);
+
+  const vehicleMarkerLayout = useMemo(
+    () =>
+      ({
+        "icon-image": ["get", "iconName"],
+        // Always show vehicles; keep icon + text as a single symbol.
+        "symbol-z-order": "source",
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+        "symbol-sort-key": ["get", "sortKey"],
+      }) as const,
+    [],
+  );
+
+  const vehicleMarkerPaint = useMemo(
+    () =>
+      ({
+        "icon-opacity": ["case", ["==", ["get", "followingState"], 2], 0.1, 1],
+      }) as const,
+    [],
+  );
 
   return (
     <div class="relative h-full w-full">
@@ -236,13 +328,11 @@ export function MapContainer() {
         }}
         hash
         antialias
-        interactiveLayerIds={["route-stops-label"]}
+        interactiveLayerIds={["route-stops-label", "vehicle-markers"]}
         onClick={handleClick}
         onLoad={onLoad}
-        onRotate={onRotate}
         onDragStart={onDragStart}
         class="h-full w-full"
-        style={{ "--bearing": bearing }}
       >
         <NavigationControl visualizeZoom visualizePitch />
 
@@ -260,25 +350,16 @@ export function MapContainer() {
           showUserLocation
         />
 
-        {Array.from(vehicles.values()).map((v) => {
-          const isFollowing =
-            followingVehicleId === v.getMapId() || (followingTripIds?.has(v.tripId) ?? false);
-
-          const hasFollowing = followingVehicleId !== null || followingTripIds !== null;
-
-          return (
-            <Marker key={v.getMapId()} longitude={v.lng} latitude={v.lat}>
-              <VehicleMarker
-                vehicle={v}
-                isFollowing={isFollowing}
-                isNotFollowing={hasFollowing && !isFollowing}
-                onClick={() => {
-                  handleVehicleClick(v.id, v.tripId);
-                }}
-              />
-            </Marker>
-          );
-        })}
+        {iconsReady && (
+          <Source id="vehicles" type="geojson" data={vehiclesGeoJson}>
+            <Layer
+              id="vehicle-markers"
+              type="symbol"
+              layout={vehicleMarkerLayout}
+              paint={vehicleMarkerPaint}
+            />
+          </Source>
+        )}
 
         <Source id="delta-move-lines" type="geojson" data={deltaMoveFeatures}>
           <Layer

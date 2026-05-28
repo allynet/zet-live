@@ -64,8 +64,6 @@ export const lastUpdateSignal = signal<number | null>(null);
 export const lastErrorSignal = signal<string | null>(null);
 export const wsConnectedSignal = signal(false);
 
-export const bearingSignal = signal(0);
-
 export const maxBoundsSignal = signal<[[number, number], [number, number]] | null>(null);
 
 export const flyToTargetSignal = signal<{ longitude: number; latitude: number } | null>(null);

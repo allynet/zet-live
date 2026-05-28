@@ -12,6 +12,8 @@ pub struct Vehicle {
     pub route_id: String,
     #[serde(alias = "trip_id")]
     pub trip_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route_long_name: Option<String>,
     pub latitude: f32,
     pub longitude: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -52,6 +54,9 @@ impl Vehicle {
             self.next_stop_arrival_time
                 .map_or(MixedValue::null(), |v| MixedValue::U64(v.cast_unsigned())),
             self.bearing.map_or(MixedValue::null(), MixedValue::F32),
+            self.route_long_name
+                .as_deref()
+                .map_or(MixedValue::null(), MixedValue::from),
         ]
     }
 }
@@ -84,6 +89,7 @@ impl TryFrom<&VehiclePosition> for Vehicle {
             id: vehicle_info.id().to_string(),
             route_id: trip_info.route_id().to_string(),
             trip_id: trip_info.trip_id().to_string(),
+            route_long_name: None,
             latitude: position_info.latitude,
             longitude: position_info.longitude,
             bearing: position_info.bearing,

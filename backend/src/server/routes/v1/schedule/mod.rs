@@ -134,7 +134,7 @@ pub async fn get_stop_trips(
         .into_response();
     }
 
-    let stop_placeholders: Vec<&str> = query.stop.iter().map(|_| "?").collect();
+    let stop_placeholders = query.stop.iter().map(|_| "?").collect::<Vec<_>>();
     let stop_list = stop_placeholders.join(", ");
 
     let global_base_midnight = get_base_midnight().await;
@@ -180,13 +180,13 @@ pub async fn get_stop_trips(
         }
     };
 
-    let mut seen_vehicles: HashSet<String> = HashSet::new();
-    let mut seen_trips: HashSet<String> = HashSet::new();
-    let mut arrival_times: Vec<StopArrivalTime> = Vec::new();
+    let mut seen_vehicles = HashSet::new();
+    let mut seen_trips = HashSet::new();
+    let mut arrival_times = Vec::new();
 
     let now = jiff::Timestamp::now().as_second();
 
-    let mut trip_base_midnight: HashMap<String, i64> = HashMap::new();
+    let mut trip_base_midnight = HashMap::new();
 
     for row in &rows {
         if let (Some(live_time), Some(offset)) = (row.live_arrival_time, row.arrival_time_seconds) {
@@ -247,7 +247,7 @@ pub async fn get_stop_trips(
         });
     }
 
-    let stop_trips: Vec<String> = seen_trips.into_iter().collect();
+    let stop_trips = seen_trips.into_iter().collect::<Vec<_>>();
 
     arrival_times.sort_by(|a, b| match (a.arrival_time, b.arrival_time) {
         (Some(a), Some(b)) => a.cmp(&b),
@@ -467,7 +467,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
             }
         }
 
-        let mut stop_times: Vec<TripStopTime> = scheduled
+        let mut stop_times = scheduled
             .into_iter()
             .map(|s| {
                 let live_stu = live_by_seq.get(&s.stop_sequence);
@@ -505,26 +505,27 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
                     arrival_time: predicted_arrival,
                 }
             })
-            .collect();
+            .collect::<Vec<_>>();
 
-        let mut max_time: Option<i64> = None;
+        let mut max_time = None;
         for st in &mut stop_times {
-            if let Some(t) = st.arrival_time {
-                if let Some(max) = max_time
-                    && t < max
-                {
-                    debug!(
-                        stop_id = %st.stop_id,
-                        stop_sequence = st.stop_sequence,
-                        predicted = t,
-                        previous_max = max,
-                        ?trip_id,
-                        "Non-monotonic arrival time detected, clamping to previous"
-                    );
-                    st.arrival_time = Some(max);
-                }
-                max_time = Some(t.max(max_time.unwrap_or(i64::MIN)));
+            let Some(t) = st.arrival_time else { continue };
+
+            if let Some(max) = max_time
+                && t < max
+            {
+                debug!(
+                    stop_id = %st.stop_id,
+                    stop_sequence = st.stop_sequence,
+                    predicted = t,
+                    previous_max = max,
+                    ?trip_id,
+                    "Non-monotonic arrival time detected, clamping to previous"
+                );
+                st.arrival_time = Some(max);
             }
+
+            max_time = Some(t.max(max_time.unwrap_or(i64::MIN)));
         }
 
         // Null out predicted arrivals for stops the vehicle has already
