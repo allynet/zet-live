@@ -150,8 +150,11 @@ export function VehicleSheet({
               const params = new URLSearchParams({ vehicle: vehicle.id });
               if (vehicle.tripId) params.set("trip", vehicle.tripId);
               const url = `${location.origin}${location.pathname}?${params}`;
-              const title = `Route ${vehicle.routeId}`;
               if (navigator.share) {
+                const title = vehicle.routeLongName
+                  ? `[${vehicle.routeId}] ${vehicle.routeLongName.trim()}`
+                  : `Route ${vehicle.routeId}`;
+
                 navigator.share({ title, url }).catch(() => {});
               } else {
                 navigator.clipboard.writeText(url).then(
