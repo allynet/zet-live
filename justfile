@@ -1,13 +1,13 @@
-set dotenv-load := true
-set positional-arguments := true
+set dotenv-load
+set positional-arguments
 
 default:
     @just --list
 
-dev-watch-server *args:
-    cd backend && \
-    just dev-watch-server {{args}}
+frontend *args:
+    cd frontend && \
+      just {{ args }}
 
-dev-run-server *args:
+backend *args:
     cd backend && \
-    just dev-run-server {{args}}
+      just {{ args }}

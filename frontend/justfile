@@ -1,0 +1,23 @@
+set dotenv-load
+set positional-arguments
+
+default:
+    @just --list
+
+build:
+    bun run build
+
+lint:
+    bun run lint:fix
+
+lint-check:
+    bun run lint
+
+fmt:
+    bun run format
+
+fmt-check:
+    bun run format:check
+
+preview: build
+    bun run preview
