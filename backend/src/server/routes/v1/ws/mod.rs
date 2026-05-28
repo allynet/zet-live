@@ -122,20 +122,14 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
 
     {
         let mut ws_connections = WS_CONNECTIONS.write().await;
-        let ws_connection = ws_connections.get_mut(&addr);
-        let count = if let Some(x) = ws_connection
-            && *x > 0
-        {
-            *x -= 1;
-            *x
-        } else {
-            0
-        };
-        drop(ws_connections);
-        if count == 0 {
-            WS_CONNECTIONS.write().await.remove(&addr);
+        if let Some(count) = ws_connections.get_mut(&addr) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                ws_connections.remove(&addr);
+            }
         }
     }
+
     debug!(?addr, "Websocket closed");
 }
 
