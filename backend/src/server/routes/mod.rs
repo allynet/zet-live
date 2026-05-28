@@ -9,7 +9,7 @@ use reqwest::{StatusCode, header};
 use tower::ServiceBuilder;
 use tower_http::{
     catch_panic::CatchPanicLayer,
-    cors::{self, CorsLayer},
+    cors::CorsLayer,
     request_id::{MakeRequestId, PropagateRequestIdLayer, RequestId, SetRequestIdLayer},
     set_header::{SetRequestHeaderLayer, SetResponseHeaderLayer},
     timeout::TimeoutLayer,
@@ -131,7 +131,7 @@ where
                 )
                 .layer(TimeoutLayer::with_status_code(
                     StatusCode::REQUEST_TIMEOUT,
-                    Duration::from_mins(1),
+                    Duration::from_secs(10),
                 ))
                 .layer(PropagateRequestIdLayer::x_request_id())
                 .layer(SetResponseHeaderLayer::appending(
@@ -146,9 +146,5 @@ where
                     },
                 )),
         )
-        .layer(
-            CorsLayer::new()
-                .allow_methods(cors::AllowMethods::mirror_request())
-                .allow_origin(cors::AllowOrigin::mirror_request()),
-        )
+        .layer(CorsLayer::very_permissive())
 }
