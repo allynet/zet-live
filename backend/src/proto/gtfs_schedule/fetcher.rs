@@ -108,7 +108,7 @@ async fn fetch_newer_schedule() -> Result<Option<()>, FetcherError> {
     trace!(?modified, ?etag, "Got schedule metadata");
 
     let res = Database::conn()
-        .lock()
+        .read()
         .await
         .query(
             "select * from gtfs_schedule_meta where (last_modified >= :modified) or (etag = \
@@ -145,7 +145,7 @@ async fn fetch_newer_schedule() -> Result<Option<()>, FetcherError> {
     debug!("Schedule read to database, committing metadata");
 
     Database::conn()
-        .lock()
+        .write()
         .await
         .execute(
             "insert into gtfs_schedule_meta (last_modified, etag) values (:last_modified, :etag)",

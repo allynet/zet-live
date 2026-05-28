@@ -28,7 +28,7 @@ impl GtfsSchedule {
 
         let queries_fut = tokio::task::spawn(
             async move {
-                let tx = Database::conn().lock().await
+                let tx = Database::conn().write().await
                     .transaction_with_behavior(libsql::TransactionBehavior::Immediate)
                     .await?;
                 let start = Instant::now();
@@ -52,7 +52,7 @@ impl GtfsSchedule {
 
                 debug!("Vacuuming database");
                 let start = Instant::now();
-                if let Err(e) = Database::conn().lock().await.execute("VACUUM", libsql::params![]).await {
+                if let Err(e) = Database::conn().write().await.execute("VACUUM", libsql::params![]).await {
                     warn!(?e, "Failed to vacuum database");
                 } else {
                     debug!(took = ?start.elapsed(), "Database vacuumed");

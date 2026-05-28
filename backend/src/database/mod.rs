@@ -7,7 +7,7 @@ use std::{
 use include_dir::{Dir, include_dir};
 use libsql::Builder;
 use sha2::{Digest, Sha256};
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tracing::{debug, error, trace, warn};
 
 use crate::cli::DatabaseUrl;
@@ -18,7 +18,7 @@ static MIGRATIONS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/database/migr
 static DATABASE: OnceLock<Arc<Database>> = OnceLock::new();
 
 pub struct Database {
-    conn: Arc<Mutex<libsql::Connection>>,
+    conn: Arc<RwLock<libsql::Connection>>,
 }
 impl Database {
     pub async fn init(url: &DatabaseUrl) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
@@ -62,7 +62,7 @@ impl Database {
         trace!("Database setup complete");
 
         let database = Self {
-            conn: Arc::new(Mutex::new(conn)),
+            conn: Arc::new(RwLock::new(conn)),
         };
         database.run_migrations().await?;
 
@@ -84,7 +84,7 @@ impl Database {
             .collect::<Vec<_>>();
         migrations.sort_by_key(|x| x.path());
 
-        let conn = self.conn.lock().await;
+        let conn = self.conn.write().await;
 
         conn.execute_batch(
             "
@@ -168,7 +168,7 @@ impl Database {
         DATABASE.get().expect("Database not initialized").clone()
     }
 
-    pub fn conn() -> Arc<Mutex<libsql::Connection>> {
+    pub fn conn() -> Arc<RwLock<libsql::Connection>> {
         Self::global().conn.clone()
     }
 
@@ -217,13 +217,13 @@ impl Database {
         Ok(results)
     }
 
-    #[tracing::instrument(skip(params), fields(query))]
+    #[inline]
     pub async fn execute_query(
         query: &str,
         params: impl libsql::params::IntoParams,
     ) -> Result<(libsql::Rows, Instant), libsql::Error> {
         let conn = Self::conn();
-        let lock = conn.lock().await;
+        let lock = conn.read().await;
         let start = Instant::now();
         let rows = lock.query(query, params).await?;
         drop(lock);
@@ -232,6 +232,7 @@ impl Database {
     }
 }
 
+#[inline]
 fn trace_query(query: &str, started: Instant) {
     static SLOW_QUERY_THRESHOLD: Duration = Duration::from_millis(20);
 

@@ -44,5 +44,5 @@ pub async fn get_version() -> Json<serde_json::Value> {
         serde_json::json!(ret)
     });
 
-    return Json(INFO.clone());
+    Json(INFO.clone())
 }

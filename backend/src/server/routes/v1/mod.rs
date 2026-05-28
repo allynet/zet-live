@@ -119,7 +119,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             trace!(took = ?stmts_start.elapsed(), "Built batch statements for active trips");
 
             if let Err(e) = Database::conn()
-                .lock()
+                .write()
                 .await
                 .execute_transactional_batch(&stmts)
                 .await
@@ -361,7 +361,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     let mut map = HashMap::new();
                     let param_refs = trip_ids.iter().map(String::as_str).collect::<Vec<_>>();
                     if let Ok(mut rows) = Database::conn()
-                        .lock()
+                        .read()
                         .await
                         .query(&sql, libsql::params_from_iter(param_refs))
                         .await
@@ -512,7 +512,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
         trace!(took = ?stmts_start.elapsed(), "Built batch statements for vehicles");
 
         if let Err(e) = Database::conn()
-            .lock()
+            .write()
             .await
             .execute_transactional_batch(&stmts)
             .await

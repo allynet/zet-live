@@ -76,31 +76,26 @@ pub async fn get_stop(headers: HeaderMap, Path(id): Path<String>) -> impl IntoRe
 
 pub async fn get_simple_stops(headers: HeaderMap) -> impl IntoResponse {
     let stops = {
-        let Ok(mut rows) = Database::conn()
-            .lock()
-            .await
-            .query(
-                "
+        let Ok(results) = Database::query::<SimpleStop>(
+            "
                 SELECT DISTINCT
                     s.stop_id, s.stop_name, s.longitude, s.latitude
                 FROM live_trips lt
                 LEFT JOIN gtfs_stop_times st on st.trip_id = lt.trip_id
                 LEFT JOIN gtfs_stops s on s.stop_id = st.stop_id
                 ",
-                libsql::params![],
-            )
-            .await
+            libsql::params![],
+        )
+        .await
         else {
             error!("Failed to get stops");
             return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get stops").into_response();
         };
-        let mut results = vec![];
-        while let Ok(Some(row)) = rows.next().await {
-            if let Ok(ss) = libsql::de::from_row::<SimpleStop>(&row) {
-                results.push(ss.into_vec());
-            }
-        }
+
         results
+            .into_iter()
+            .map(crate::proto::gtfs_schedule::data::stop::SimpleStop::into_vec)
+            .collect::<Vec<_>>()
     };
 
     JsonOrAccept(
