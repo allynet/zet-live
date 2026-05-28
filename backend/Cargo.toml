@@ -14,14 +14,14 @@ csv = "1.4.0"
 dotenvy = "0.15.7"
 futures = "0.3.32"
 include_dir = { version = "0.7.4", features = ["metadata"] }
-jiff = { version = "0.2.25", features = ["serde"] }
+jiff = { version = "0.2.27", features = ["serde"] }
 libsql = "0.9.30"
 listenfd = "1.0.2"
 mime = "0.3.17"
 minicbor-serde = { version = "0.7.0", features = ["full"] }
 prost = { version = "0.14.3" }
 rand = "0.10.1"
-reqwest = { version = "0.13.3", features = ["json", "deflate", "gzip", "brotli", "rustls", "hickory-dns", "cookies", "stream", "multipart"] }
+reqwest = { version = "0.13.4", features = ["json", "deflate", "gzip", "brotli", "rustls", "hickory-dns", "cookies", "stream", "multipart"] }
 sha2 = "0.11.0"
 serde = { version = "1.0.219", features = ["alloc", "derive"] }
 serde_json = { version = "1.0.150", features = ["alloc"] }
