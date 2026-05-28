@@ -31,6 +31,7 @@ import {
   updateMaxBounds,
 } from "@/state";
 import { getSharedWorker, postWorkerMessage } from "./use-worker";
+import { requestIdleCallback } from "@/utils/polyfill/requestSomeCallback";
 
 export function useStops() {
   const fetchStops = useCallback(async () => {

@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ComponentChildren } from "preact";
 import { animate, motion, useDragControls, useMotionValue } from "motion/react";
+import {
+  requestAnimationFrame,
+  cancelAnimationOrIdleCallback,
+} from "@/utils/polyfill/requestSomeCallback";
 
 type SheetState = "minimized" | "expanded" | "maximized";
 
@@ -55,10 +59,11 @@ export function BottomSheet({
   useEffect(() => {
     if (!rendered) return;
 
+    let timeout: number | null = null;
     if (open) {
       const sheetHeight = sheetRef.current?.offsetHeight ?? 300;
       y.set(sheetHeight);
-      requestAnimationFrame(() => {
+      timeout = requestAnimationFrame(() => {
         animate(y, 0, ENTER);
       });
     } else {
@@ -70,6 +75,10 @@ export function BottomSheet({
         },
       });
     }
+
+    return () => {
+      cancelAnimationOrIdleCallback(timeout);
+    };
   }, [rendered, open, y]);
 
   if (!rendered) return null;

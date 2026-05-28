@@ -1,6 +1,11 @@
 import { useEffect } from "preact/hooks";
 import { toast } from "sonner";
 import type { VehicleV1 } from "@/app/entity/v1/vehicle";
+import {
+  requestIdleCallback,
+  requestAnimationFrame,
+  cancelAnimationOrIdleCallback,
+} from "@/utils/polyfill/requestSomeCallback";
 
 function formatMinutesFromNow(arrivalTime: number): string {
   const secondsUntil = arrivalTime - Date.now() / 1000;
@@ -58,8 +63,7 @@ export function VehicleSheet({
     });
 
     return () => {
-      cancelIdleCallback(timeout);
-      cancelAnimationFrame(timeout);
+      cancelAnimationOrIdleCallback(timeout);
     };
   }, [vehicle.id]);
 
