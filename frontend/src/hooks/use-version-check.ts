@@ -2,7 +2,7 @@ import { useEffect } from "preact/hooks";
 import { API_URL } from "@/app/consts";
 import { toast } from "sonner";
 
-const CHECK_INTERVAL = 5 * 60 * 1000;
+const CHECK_INTERVAL = 60 * 1000;
 const AUTO_REFRESH_DELAY = 15 * 1000;
 
 type VersionResponse = {
