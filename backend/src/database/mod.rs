@@ -1,12 +1,11 @@
 use std::{
     collections::HashMap,
-    sync::Arc,
+    sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 
 use include_dir::{Dir, include_dir};
 use libsql::Builder;
-use once_cell::sync::OnceCell;
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use tracing::{debug, error, trace, warn};
@@ -16,7 +15,7 @@ use crate::cli::DatabaseUrl;
 pub mod entities;
 
 static MIGRATIONS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/database/migrations");
-static DATABASE: OnceCell<Arc<Database>> = OnceCell::new();
+static DATABASE: OnceLock<Arc<Database>> = OnceLock::new();
 
 pub struct Database {
     conn: Arc<Mutex<libsql::Connection>>,

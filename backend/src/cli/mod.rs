@@ -1,11 +1,14 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::PathBuf,
+    sync::{Arc, OnceLock},
+};
 
 use axum_client_ip::ClientIpSource;
 use clap::{CommandFactory, Parser, ValueEnum};
 use clap_complete::Shell;
 use validator::ValidationError;
 
-static CLI_ARGS: once_cell::sync::OnceCell<Arc<Config>> = once_cell::sync::OnceCell::new();
+static CLI_ARGS: OnceLock<Arc<Config>> = OnceLock::new();
 
 #[derive(Debug, clap::Parser)]
 #[clap(version)]

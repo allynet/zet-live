@@ -1,4 +1,9 @@
-use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    net::IpAddr,
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
 
 use axum::{
     body::Bytes,
@@ -11,7 +16,6 @@ use axum::{
 };
 use axum_client_ip::ClientIp;
 use futures::{SinkExt, StreamExt};
-use once_cell::sync::Lazy;
 use tokio::{
     sync::{Mutex, RwLock},
     time,
@@ -21,8 +25,8 @@ use tracing::{debug, error, trace, warn};
 use super::{INITIAL_STATE, V1AppState};
 use crate::server::{request::JsonOrAccept, routes::v1::Transmission};
 
-pub static WS_CONNECTIONS: Lazy<Arc<RwLock<HashMap<IpAddr, u32>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+pub static WS_CONNECTIONS: LazyLock<Arc<RwLock<HashMap<IpAddr, u32>>>> =
+    LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
 
 pub async fn get_ws_connections(headers: HeaderMap) -> impl IntoResponse {
     JsonOrAccept(WS_CONNECTIONS.read().await.clone(), headers).into_response()

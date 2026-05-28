@@ -1,9 +1,9 @@
-use std::env;
+use std::{env, sync::OnceLock};
 
 use tracing::{Level, warn};
 use tracing_subscriber::{EnvFilter, filter::Directive, fmt, prelude::*};
 
-static RELOAD_HANDLE: once_cell::sync::OnceCell<
+static RELOAD_HANDLE: OnceLock<
     tracing_subscriber::reload::Handle<
         EnvFilter,
         tracing_subscriber::layer::Layered<
@@ -11,7 +11,7 @@ static RELOAD_HANDLE: once_cell::sync::OnceCell<
             tracing_subscriber::Registry,
         >,
     >,
-> = once_cell::sync::OnceCell::new();
+> = OnceLock::new();
 
 pub const COMPONENT_LEVELS: &[(&str, Level)] = &[
     // Binaries

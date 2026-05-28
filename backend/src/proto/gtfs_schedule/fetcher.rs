@@ -1,13 +1,16 @@
-use std::{string::ToString, sync::Arc, time::Duration};
+use std::{
+    string::ToString,
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
 
 use libsql::named_params;
-use once_cell::sync::Lazy;
 use tokio::sync::Notify;
 use tracing::{debug, trace, warn};
 
 use crate::{cli::Config, database::Database, proto::gtfs_schedule::data::GtfsSchedule};
 
-static DATA_NOTIFICATION: Lazy<Arc<Notify>> = Lazy::new(|| Arc::new(Notify::new()));
+static DATA_NOTIFICATION: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
 
 pub async fn wait_for_schedule_update() {
     DATA_NOTIFICATION.notified().await;

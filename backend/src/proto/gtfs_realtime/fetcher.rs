@@ -1,9 +1,8 @@
 use std::{
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::{Duration, Instant},
 };
 
-use once_cell::sync::Lazy;
 use prost::Message;
 use tokio::sync::{Notify, RwLock};
 use tracing::{debug, trace, warn};
@@ -11,8 +10,8 @@ use tracing::{debug, trace, warn};
 use super::data::transit_realtime::FeedMessage;
 use crate::cli::Config;
 
-static FEED: Lazy<RwLock<Option<Arc<FeedMessage>>>> = Lazy::new(|| RwLock::new(None));
-static FEED_NOTIFICATION: Lazy<Arc<Notify>> = Lazy::new(|| Arc::new(Notify::new()));
+static FEED: LazyLock<RwLock<Option<Arc<FeedMessage>>>> = LazyLock::new(|| RwLock::new(None));
+static FEED_NOTIFICATION: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
 
 pub async fn fetch_feed() -> Result<FeedMessage, FetcherError> {
     let url = Config::global()

@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::LazyLock};
 
 use accept_header::Accept;
 use axum::{
@@ -6,13 +6,12 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use mime::Mime;
-use once_cell::sync::Lazy;
 use prost::bytes::{BufMut, BytesMut};
 use reqwest::{StatusCode, header};
 use serde::Serialize;
 
-static APPLICATION_CBOR: Lazy<Mime> =
-    Lazy::new(|| Mime::from_str("application/cbor").expect("Invalid MIME type"));
+static APPLICATION_CBOR: LazyLock<Mime> =
+    LazyLock::new(|| Mime::from_str("application/cbor").expect("Invalid MIME type"));
 pub struct JsonOrAccept<T>(pub T, pub HeaderMap);
 
 impl<T> IntoResponse for JsonOrAccept<T>

@@ -1,13 +1,12 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Write,
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::Instant,
 };
 
 use _entity::vehicle::Vehicle;
 use axum::{Router, routing::get};
-use once_cell::sync::Lazy;
 use tokio::sync::{RwLock, watch};
 use tracing::{error, trace};
 
@@ -62,7 +61,7 @@ pub struct InitialState {
     vehicles: Vec<u8>,
     active_stops: Vec<u8>,
 }
-pub static INITIAL_STATE: Lazy<RwLock<InitialState>> = Lazy::new(|| {
+pub static INITIAL_STATE: LazyLock<RwLock<InitialState>> = LazyLock::new(|| {
     RwLock::new(InitialState {
         vehicles: Vec::new(),
         active_stops: Vec::new(),
