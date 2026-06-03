@@ -1,4 +1,3 @@
-import { useEffect, useCallback } from "preact/hooks";
 import { batch } from "@preact/signals";
 import type { V1Message } from "@/app/entity/v1/message";
 import {
@@ -15,8 +14,6 @@ import {
   vehiclesSignal,
   vehicleBoundsSignal,
   simpleStopsSignal,
-  activeStopIdsSignal,
-  stopBoundsSignal,
   deltaMoveLinesSignal,
   followingVehicleIdSignal,
   followingStopIdsSignal,
@@ -26,138 +23,38 @@ import {
   stopsGroupedSignal,
   tripStopTimesSignal,
   stopArrivalTimesSignal,
-  type GroupedStop,
+  stopBoundsSignal,
   type VehicleLocationPair,
   updateMaxBounds,
 } from "@/state";
-import { getSharedWorker, postWorkerMessage } from "./use-worker";
-import { requestIdleCallback } from "@/utils/polyfill/requestSomeCallback";
+import type { StopsUpdateResponse } from "./use-worker";
 
-export function useStops() {
-  const fetchStops = useCallback(async () => {
-    let success = false;
+export function handleStopsUpdate(response: StopsUpdateResponse) {
+  if (response.stops) {
+    const stops = response.stops.map((s) => new StopV1(s));
 
-    while (!success) {
-      success = await fetch(`${API_URL}/v1/schedule/simple-stops`, {
-        headers: {
-          accept: "application/cbor,application/json",
-        },
-      })
-        .then((x) => x.arrayBuffer())
-        .then((x) => {
-          const worker = getSharedWorker();
-          postWorkerMessage(worker, new Blob([x]));
-          return true;
-        })
-        .catch(() => false);
-
-      if (!success) {
-        await new Promise((resolve) => setTimeout(resolve, 5000 + 5000 * Math.random()));
+    batch(() => {
+      simpleStopsSignal.value = Object.fromEntries(stops.map((stop) => [stop.id, stop]));
+      if (response.bounds) {
+        stopBoundsSignal.value = response.bounds;
       }
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchStops();
-    const interval = setInterval(() => void fetchStops(), 60_000 + 60_000 * Math.random());
-    return () => {
-      clearInterval(interval);
-    };
-  }, [fetchStops]);
-}
-
-type StopGroup = {
-  stops: StopV1[];
-  minLat: number;
-  maxLat: number;
-  minLng: number;
-  maxLng: number;
-};
-
-function mergedBboxArea(group: StopGroup, stop: StopV1) {
-  const minLat = Math.min(group.minLat, stop.lat);
-  const maxLat = Math.max(group.maxLat, stop.lat);
-  const minLng = Math.min(group.minLng, stop.lng);
-  const maxLng = Math.max(group.maxLng, stop.lng);
-  return (maxLat - minLat) * (maxLng - minLng);
-}
-
-function extendGroup(group: StopGroup, stop: StopV1) {
-  group.stops.push(stop);
-  group.minLat = Math.min(group.minLat, stop.lat);
-  group.maxLat = Math.max(group.maxLat, stop.lat);
-  group.minLng = Math.min(group.minLng, stop.lng);
-  group.maxLng = Math.max(group.maxLng, stop.lng);
-}
-
-function computeGroupedStops() {
-  const simpleStops = simpleStopsSignal.value;
-  const activeStopIds = activeStopIdsSignal.value;
-
-  type StopsByName = Record<string, StopV1[]>;
-  const stopsByName = Object.values(simpleStops).reduce<StopsByName>((acc, a) => {
-    if (!acc[a.name]) {
-      acc[a.name] = [];
-    }
-    acc[a.name]!.push(a);
-    return acc;
-  }, {});
-
-  requestIdleCallback(() => {
-    const stopsByDistance = Object.entries(stopsByName).reduce<Record<string, StopGroup[]>>(
-      (acc, [name, stops]) => {
-        const grouped: StopGroup[] = [];
-
-        for (const stop of stops) {
-          if (activeStopIds.size > 0 && !activeStopIds.has(stop.id)) {
-            continue;
-          }
-
-          const closeEnough = grouped.find((g) => mergedBboxArea(g, stop) < 1e-7);
-
-          if (closeEnough) {
-            extendGroup(closeEnough, stop);
-            continue;
-          }
-
-          grouped.push({
-            stops: [stop],
-            minLat: stop.lat,
-            maxLat: stop.lat,
-            minLng: stop.lng,
-            maxLng: stop.lng,
-          });
-        }
-
-        acc[name] = grouped;
-        return acc;
-      },
-      {},
-    );
-
-    requestIdleCallback(() => {
-      const result = Object.values(stopsByDistance)
-        .flatMap((x) => x.map((y) => y.stops))
-        .map((a) => {
-          const name = a[0]!.name;
-          const avgLat = a.reduce((acc, stop) => acc + stop.lat, 0) / a.length;
-          const avgLng = a.reduce((acc, stop) => acc + stop.lng, 0) / a.length;
-          const ids = a.map((stop) => stop.id);
-          return { name, lat: avgLat, lng: avgLng, ids } satisfies GroupedStop;
-        });
-
-      stopsGroupedSignal.value = result;
-
-      if (!followingVehicleIdSignal.value && followingStopIdsSignal.value.length === 0) {
-        displayedStopsSignal.value = result;
-      }
+      updateMaxBounds();
     });
-  });
+
+    console.log("Updating stops");
+  }
+
+  stopsGroupedSignal.value = response.grouped;
+
+  if (!followingVehicleIdSignal.value && followingStopIdsSignal.value.length === 0) {
+    displayedStopsSignal.value = response.grouped;
+  }
 }
 
 export function processMessage(message: V1Message) {
   if (typeof message.d === "object" && "vehicles" in message.d) {
-    const vehicles = message.d.vehicles.map((v) => VehicleV1.fromSimple(v));
+    const rawVehicles = message.d.vehicles;
+    const currentMap = vehiclesSignal.value;
     const locationPairs: VehicleLocationPair[] = [];
 
     let minLat = 89.5;
@@ -167,21 +64,28 @@ export function processMessage(message: V1Message) {
 
     const newMap = new Map<string, VehicleV1>();
 
-    for (const v of vehicles) {
-      if (v.prevLat !== null && v.prevLng !== null) {
-        locationPairs.push({
-          from: [v.prevLng, v.prevLat],
-          to: [v.lng, v.lat],
-          color: Number(v.routeId) >= 100 ? "#00f" : "#f00",
-        });
+    for (const raw of rawVehicles) {
+      const row = raw as (string | number)[];
+      const vehicle = VehicleV1.fromSimple(row);
+      const key = vehicle.getMapId();
+
+      const existing = currentMap.get(key);
+      if (existing) {
+        if (existing.prevLat !== null && existing.prevLng !== null) {
+          locationPairs.push({
+            from: [existing.prevLng, existing.prevLat],
+            to: [vehicle.lng, vehicle.lat],
+            color: Number(vehicle.routeId) >= 100 ? "#00f" : "#f00",
+          });
+        }
       }
 
-      minLat = Math.min(minLat, v.lat);
-      maxLat = Math.max(maxLat, v.lat);
-      minLng = Math.min(minLng, v.lng);
-      maxLng = Math.max(maxLng, v.lng);
+      newMap.set(key, vehicle);
 
-      newMap.set(v.getMapId(), v);
+      minLat = Math.min(minLat, vehicle.lat);
+      maxLat = Math.max(maxLat, vehicle.lat);
+      minLng = Math.min(minLng, vehicle.lng);
+      maxLng = Math.max(maxLng, vehicle.lng);
     }
 
     batch(() => {
@@ -207,43 +111,6 @@ export function processMessage(message: V1Message) {
         void refreshStopArrivalTimes(stopIds);
       }
     }
-  }
-
-  if (typeof message.d === "object" && "activeStops" in message.d) {
-    const newActiveStopIds = new Set(message.d.activeStops);
-    const currentIds = activeStopIdsSignal.value;
-    const diff = new Set([...newActiveStopIds].filter((id) => !currentIds.has(id)));
-    if (diff.size > 0) {
-      activeStopIdsSignal.value = newActiveStopIds;
-      computeGroupedStops();
-    }
-  }
-
-  if (typeof message.d === "object" && "simpleStops" in message.d) {
-    const stops = (message.d.simpleStops as (string | number)[][]).map((s) => StopV1.fromSimple(s));
-    console.log("Updating stops");
-
-    let minLat = 89.5;
-    let maxLat = -89.5;
-    let minLng = 89.5;
-    let maxLng = -89.5;
-    for (const stop of stops) {
-      minLat = Math.min(minLat, stop.lat);
-      maxLat = Math.max(maxLat, stop.lat);
-      minLng = Math.min(minLng, stop.lng);
-      maxLng = Math.max(maxLng, stop.lng);
-    }
-
-    batch(() => {
-      stopBoundsSignal.value = [
-        [minLng, minLat],
-        [maxLng, maxLat],
-      ];
-      simpleStopsSignal.value = Object.fromEntries(stops.map((stop) => [stop.id, stop]));
-      updateMaxBounds();
-    });
-
-    computeGroupedStops();
   }
 }
 

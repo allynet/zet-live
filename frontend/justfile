@@ -10,7 +10,7 @@ build:
 dev:
     bun run dev
 
-lint:
+lint: type-check
     bun run lint:fix
 
 lint-check:
@@ -21,6 +21,9 @@ fmt:
 
 fmt-check:
     bun run format:check
+
+type-check:
+    bun run --bun tsc --noEmit
 
 preview: build
     bun run preview

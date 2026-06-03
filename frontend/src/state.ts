@@ -1,4 +1,4 @@
-import { signal } from "@preact/signals";
+import { signal, computed } from "@preact/signals";
 import type { VehicleV1 } from "./app/entity/v1/vehicle";
 import type { StopV1 } from "./app/entity/v1/stop";
 
@@ -30,6 +30,11 @@ export const stopBoundsSignal = signal<[[number, number], [number, number]]>([
 ]);
 
 export const followingVehicleIdSignal = signal<string | null>(null);
+export const selectedVehicleSignal = computed(() => {
+  const id = followingVehicleIdSignal.value;
+  if (!id) return null;
+  return vehiclesSignal.value.get(id) ?? null;
+});
 export const followEnabledSignal = signal(false);
 export const followingStopIdsSignal = signal<string[]>([]);
 export const followingTripIdSignal = signal<string | null>(null);

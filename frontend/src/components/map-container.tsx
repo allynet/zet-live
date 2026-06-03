@@ -9,6 +9,7 @@ import MapGL, {
 import { useRef, useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { useSignalEffect } from "@preact/signals";
 import type { StyleSpecification } from "maplibre-gl";
+import type { FeatureCollection } from "geojson";
 import mapStyle3d from "@/data/maps/style/3d.json";
 import mapStyle3dDark from "@/data/maps/style/3d.dark.json";
 import mapStyleFlat from "@/data/maps/style/flat.json";
@@ -29,7 +30,6 @@ import {
   type MapStyleId,
 } from "@/state";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
-import { MapStyleSwitcher } from "./map-style-switcher";
 import { useSignalState } from "@/hooks/use-signal-state";
 import { useGeolocationPermission } from "@/hooks/use-geolocation-permission";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -40,6 +40,7 @@ import {
   vehicleIconName,
   type VehicleIconDescriptor,
 } from "@/utils/vehicle-icons";
+import type { VehicleV1 } from "@/app/entity/v1/vehicle";
 
 const styleMap = new Map<MapStyleId, StyleSpecification>([
   ["3d", mapStyle3d as StyleSpecification],
@@ -49,6 +50,11 @@ const styleMap = new Map<MapStyleId, StyleSpecification>([
 ]);
 
 const mapStyle = styleMap.get(mapStyleIdSignal.value) ?? (mapStyle3d as StyleSpecification);
+
+const emptyGeoJSON: FeatureCollection = {
+  type: "FeatureCollection",
+  features: [],
+};
 
 function createArrowHeadImage(color: string): Promise<HTMLImageElement> {
   const svg = `
@@ -65,6 +71,102 @@ function createArrowHeadImage(color: string): Promise<HTMLImageElement> {
       resolve(img);
     });
   });
+}
+
+function buildVehiclesGeoJson(
+  vehicles: Map<string, VehicleV1>,
+  followingVehicleId: string | null,
+  followingTripIds: Set<string> | null,
+  searchMatchedVehicleIds: Set<string> | null,
+) {
+  const all = Array.from(vehicles.values());
+  const filtered = searchMatchedVehicleIds
+    ? all.filter((v) => searchMatchedVehicleIds.has(v.getMapId()))
+    : all;
+  return {
+    type: "FeatureCollection" as const,
+    features: filtered.map((v) => {
+      const mapId = v.getMapId();
+      const isFollowing =
+        followingVehicleId === mapId || (followingTripIds?.has(v.tripId) ?? false);
+      const hasFollowing = followingVehicleId !== null || followingTripIds !== null;
+
+      return {
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [v.lng, v.lat] as [number, number] },
+        properties: {
+          id: v.id,
+          tripId: v.tripId,
+          themeColor: v.routeId.length > 2 ? "blue" : "red",
+          iconName: vehicleIconName(
+            v.routeId,
+            v.routeId.length > 2 ? "blue" : "red",
+            quantizeBearing(v.bearing),
+          ),
+          followingState: isFollowing ? 1 : hasFollowing ? 2 : 0,
+          sortKey: isFollowing ? 2 : hasFollowing ? 0 : 1,
+        },
+      };
+    }),
+  };
+}
+
+function buildDeltaMoveFeatures(
+  deltaMoveLines: { from: [number, number]; to: [number, number]; color: string }[],
+) {
+  return {
+    type: "FeatureCollection" as const,
+    features: deltaMoveLines.map((x) => ({
+      type: "Feature" as const,
+      properties: { color: x.color },
+      geometry: {
+        type: "LineString" as const,
+        coordinates: [x.from, x.to],
+      },
+    })),
+  };
+}
+
+function buildFollowingRouteFeatures(followingRoute: [number, number][] | null) {
+  return followingRoute
+    ? {
+        type: "FeatureCollection" as const,
+        features: [
+          {
+            type: "Feature" as const,
+            properties: { color: "#f0f" },
+            geometry: {
+              type: "LineString" as const,
+              coordinates: followingRoute,
+            },
+          },
+        ],
+      }
+    : emptyGeoJSON;
+}
+
+function imperativeSetData(mapRef: { current: MapRef | null }, sourceId: string, data: unknown) {
+  const map = mapRef.current?.getMap();
+  const source = map?.getSource(sourceId);
+  if (source && "setData" in source) {
+    (source as { setData: (data: unknown) => void }).setData(data);
+  }
+}
+
+function useRafSetData(mapRef: { current: MapRef | null }, sourceId: string, data: unknown) {
+  const rafId = useRef<number | null>(null);
+  useEffect(() => {
+    if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+    const captured = data;
+    rafId.current = requestAnimationFrame(() => {
+      rafId.current = null;
+      if (!mapRef.current) return;
+      imperativeSetData(mapRef, sourceId, captured);
+    });
+    return () => {
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+    };
+  }, [sourceId, data, mapRef]);
 }
 
 export function MapContainer() {
@@ -180,39 +282,6 @@ export function MapContainer() {
     flyToTargetSignal.value = null;
   });
 
-  const vehiclesGeoJson = useMemo(() => {
-    const all = Array.from(vehicles.values());
-    const filtered = searchMatchedVehicleIds
-      ? all.filter((v) => searchMatchedVehicleIds.has(v.getMapId()))
-      : all;
-    return {
-      type: "FeatureCollection" as const,
-      features: filtered.map((v) => {
-        const mapId = v.getMapId();
-        const isFollowing =
-          followingVehicleId === mapId || (followingTripIds?.has(v.tripId) ?? false);
-        const hasFollowing = followingVehicleId !== null || followingTripIds !== null;
-
-        return {
-          type: "Feature" as const,
-          geometry: { type: "Point" as const, coordinates: [v.lng, v.lat] as [number, number] },
-          properties: {
-            id: v.id,
-            tripId: v.tripId,
-            themeColor: v.routeId.length > 2 ? "blue" : "red",
-            iconName: vehicleIconName(
-              v.routeId,
-              v.routeId.length > 2 ? "blue" : "red",
-              quantizeBearing(v.bearing),
-            ),
-            followingState: isFollowing ? 1 : hasFollowing ? 2 : 0,
-            sortKey: isFollowing ? 2 : hasFollowing ? 0 : 1,
-          },
-        };
-      }),
-    };
-  }, [vehicles, followingVehicleId, followingTripIds, searchMatchedVehicleIds]);
-
   const vehicleIconsToEnsure = useMemo<VehicleIconDescriptor[]>(() => {
     const unique = new Map<string, VehicleIconDescriptor>();
     for (const v of vehicles.values()) {
@@ -237,20 +306,44 @@ export function MapContainer() {
     ensureVehicleIcons(map, vehicleIconsToEnsure);
   }, [iconsReady, vehicleIconsToEnsure]);
 
-  const deltaMoveFeatures = useMemo(
-    () => ({
-      type: "FeatureCollection" as const,
-      features: deltaMoveLines.map((x) => ({
-        type: "Feature" as const,
-        properties: { color: x.color },
-        geometry: {
-          type: "LineString" as const,
-          coordinates: [x.from, x.to],
-        },
-      })),
-    }),
-    [deltaMoveLines],
+  const vehiclesRafId = useRef<number | null>(null);
+  const vehiclesGeoJson = useMemo(
+    () =>
+      buildVehiclesGeoJson(vehicles, followingVehicleId, followingTripIds, searchMatchedVehicleIds),
+    [vehicles, followingVehicleId, followingTripIds, searchMatchedVehicleIds],
   );
+  useEffect(() => {
+    if (!iconsReady) return;
+    if (vehiclesRafId.current !== null) cancelAnimationFrame(vehiclesRafId.current);
+    const data = vehiclesGeoJson;
+    vehiclesRafId.current = requestAnimationFrame(() => {
+      vehiclesRafId.current = null;
+      const map = mapRef.current?.getMap();
+      if (!map) return;
+      ensureVehicleIcons(
+        map,
+        data.features
+          .map((f) => {
+            const props = f.properties as { iconName: string };
+            const match = /^vehicle-(red|blue)-r([^-]+)-b(\d+|none)$/.exec(props.iconName);
+            if (!match) return null;
+            return {
+              routeId: decodeURIComponent(match[2]!),
+              color: match[1],
+              qBearing: match[3] === "none" ? null : Number(match[3]),
+            };
+          })
+          .filter((d): d is VehicleIconDescriptor => d !== null),
+      );
+      imperativeSetData(mapRef, "vehicles", data);
+    });
+    return () => {
+      if (vehiclesRafId.current !== null) cancelAnimationFrame(vehiclesRafId.current);
+    };
+  }, [iconsReady, vehiclesGeoJson]);
+
+  const deltaMoveFeatures = useMemo(() => buildDeltaMoveFeatures(deltaMoveLines), [deltaMoveLines]);
+  useRafSetData(mapRef, "delta-move-lines", deltaMoveFeatures);
 
   const routeStopsFeatures = useMemo(() => {
     const filtered = searchMatchedStopIds
@@ -272,41 +365,16 @@ export function MapContainer() {
       })),
     };
   }, [displayedStops, nextStopId, searchMatchedStopIds]);
+  useRafSetData(mapRef, "route-stops", routeStopsFeatures);
 
   const followingRouteFeatures = useMemo(
-    () =>
-      followingRoute
-        ? {
-            type: "FeatureCollection" as const,
-            features: [
-              {
-                type: "Feature" as const,
-                properties: { color: "#f0f" },
-                geometry: {
-                  type: "LineString" as const,
-                  coordinates: followingRoute,
-                },
-              },
-            ],
-          }
-        : {
-            type: "FeatureCollection" as const,
-            features: [],
-          },
+    () => buildFollowingRouteFeatures(followingRoute),
     [followingRoute],
   );
+  useRafSetData(mapRef, "current-following-route", followingRouteFeatures);
 
   const isFollowingSomething =
     followingVehicleId !== null || followingTripIds !== null || followingRoute !== null;
-
-  useEffect(() => {
-    const map = mapRef.current?.getMap();
-    if (!map) return;
-    const source = map.getSource("route-stops");
-    if (source && "setData" in source) {
-      (source as { setData: (data: unknown) => void }).setData(routeStopsFeatures);
-    }
-  }, [routeStopsFeatures]);
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
@@ -319,7 +387,6 @@ export function MapContainer() {
     () =>
       ({
         "icon-image": ["get", "iconName"],
-        // Always show vehicles; keep icon + text as a single symbol.
         "symbol-z-order": "source",
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
@@ -331,7 +398,7 @@ export function MapContainer() {
   const vehicleMarkerPaint = useMemo(
     () =>
       searchActive
-        ? ({} as const)
+        ? undefined
         : ({
             "icon-opacity": ["case", ["==", ["get", "followingState"], 2], 0.1, 1],
           } as const),
@@ -373,7 +440,7 @@ export function MapContainer() {
         />
 
         {iconsReady && (
-          <Source id="vehicles" type="geojson" data={vehiclesGeoJson}>
+          <Source id="vehicles" type="geojson" data={emptyGeoJSON}>
             <Layer
               id="vehicle-markers"
               type="symbol"
@@ -383,7 +450,7 @@ export function MapContainer() {
           </Source>
         )}
 
-        <Source id="delta-move-lines" type="geojson" data={deltaMoveFeatures}>
+        <Source id="delta-move-lines" type="geojson" data={emptyGeoJSON}>
           <Layer
             id="delta-move-lines"
             type="line"
@@ -413,7 +480,7 @@ export function MapContainer() {
           />
         </Source>
 
-        <Source id="current-following-route" type="geojson" data={followingRouteFeatures}>
+        <Source id="current-following-route" type="geojson" data={emptyGeoJSON}>
           <Layer
             id="current-following-route"
             type="line"

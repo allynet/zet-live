@@ -1,7 +1,13 @@
 import { useEffect, useCallback } from "preact/hooks";
-import { getSharedWorker, postWorkerMessage, type WorkerResponse } from "./use-worker";
+import {
+  getSharedWorker,
+  postWorkerMessage,
+  startWorkerStopsFetching,
+  stopWorkerStopsFetching,
+  type WorkerResponse,
+} from "./use-worker";
 import { API_URL } from "@/app/consts";
-import { processMessage } from "./use-stops";
+import { processMessage, handleStopsUpdate } from "./use-stops";
 import { lastUpdateSignal, lastErrorSignal, wsConnectedSignal } from "@/state";
 
 export function useWebSocket() {
@@ -15,8 +21,12 @@ export function useWebSocket() {
           processMessage(response.data);
           return;
         }
+        case "stops-update": {
+          handleStopsUpdate(response);
+          return;
+        }
         default: {
-          console.error("Unknown message type from worker", response.type);
+          console.error("Unknown message type from worker", (response as { type: string }).type);
           return;
         }
       }
@@ -24,7 +34,10 @@ export function useWebSocket() {
 
     worker.addEventListener("message", handler);
 
+    startWorkerStopsFetching(worker);
+
     return () => {
+      stopWorkerStopsFetching(worker);
       worker.removeEventListener("message", handler);
     };
   }, []);

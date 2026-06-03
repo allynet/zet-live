@@ -47,10 +47,13 @@ export function SearchBar() {
   });
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isSearchActive, setIsSearchActive] = useState(false);
   const vehicles = useSignalState(vehiclesSignal);
   const stopsGrouped = useSignalState(stopsGroupedSignal);
 
   const searchableItems = useMemo<SearchableItem[]>(() => {
+    if (!isSearchActive) return [];
+
     const items: SearchableItem[] = [];
 
     for (const stop of stopsGrouped) {
@@ -88,7 +91,7 @@ export function SearchBar() {
     }
 
     return items;
-  }, [vehicles, stopsGrouped]);
+  }, [isSearchActive, vehicles, stopsGrouped]);
 
   const fuse = useMemo(
     () =>
@@ -123,7 +126,7 @@ export function SearchBar() {
         return filtered.map((item) => ({
           type: "vehicle" as const,
           score: 0,
-          item: item.data,
+          item: item.data as VehicleRouteGroup,
         }));
       }
     }
@@ -131,19 +134,17 @@ export function SearchBar() {
     const fuseResults = fuse.search(normalizedQuery, { limit: 50 });
     const combined: UnifiedSearchResult[] = [];
 
-    console.log(fuseResults);
-
     for (const r of fuseResults) {
       const item = r.item;
       if (item.type === "station" && !filters.stations) continue;
       if (item.type === "tram" && !filters.trams) continue;
       if (item.type === "bus" && !filters.buses) continue;
 
-      combined.push({
-        type: item.type === "station" ? "station" : "vehicle",
-        score: r.score ?? 1,
-        item: item.data,
-      });
+      if (item.type === "station") {
+        combined.push({ type: "station", score: r.score ?? 1, item: item.data });
+      } else {
+        combined.push({ type: "vehicle", score: r.score ?? 1, item: item.data });
+      }
     }
 
     return combined.slice(0, 10);
@@ -153,6 +154,9 @@ export function SearchBar() {
     if (!query.trim()) {
       searchMatchedVehicleMapIdsSignal.value = null;
       searchMatchedStopIdsSignal.value = null;
+      if (!document.activeElement || document.activeElement !== inputRef.current) {
+        setIsSearchActive(false);
+      }
       return;
     }
 
@@ -271,6 +275,12 @@ export function SearchBar() {
           value={query}
           onInput={(e) => {
             setQuery((e.target as HTMLInputElement).value);
+          }}
+          onFocus={() => {
+            setIsSearchActive(true);
+          }}
+          onBlur={() => {
+            if (!query.trim()) setIsSearchActive(false);
           }}
           onKeyDown={handleKeyDown}
           placeholder="Search stations or routes..."

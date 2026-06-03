@@ -6,14 +6,12 @@ import { StatusBar } from "@/components/status-bar";
 import { SearchBar } from "@/components/search-bar";
 import { Toaster } from "sonner";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { useStops } from "@/hooks/use-stops";
 import { useSignalState } from "@/hooks/use-signal-state";
 import { useUrlSync } from "@/hooks/use-url-sync";
 import { useVersionCheck } from "@/hooks/use-version-check";
 import {
   selectedStopSignal,
-  vehiclesSignal,
-  followingVehicleIdSignal,
+  selectedVehicleSignal,
   followEnabledSignal,
   flyToTargetSignal,
   displayedStopsSignal,
@@ -26,19 +24,15 @@ import { MapStyleSwitcher } from "./components/map-style-switcher";
 
 export function App() {
   useWebSocket();
-  useStops();
   useUrlSync();
   useVersionCheck();
 
-  const followingVehicleId = useSignalState(followingVehicleIdSignal);
-  const vehicles = useSignalState(vehiclesSignal);
   const selectedStop = useSignalState(selectedStopSignal);
+  const selectedVehicle = useSignalState(selectedVehicleSignal);
   const displayedStops = useSignalState(displayedStopsSignal);
   const tripStopTimes = useSignalState(tripStopTimesSignal);
   const stopArrivalTimes = useSignalState(stopArrivalTimesSignal);
   const followEnabled = useSignalState(followEnabledSignal);
-
-  const selectedVehicle = followingVehicleId ? (vehicles.get(followingVehicleId) ?? null) : null;
 
   const nextStopIndex = selectedVehicle?.nextStopId
     ? displayedStops.findIndex((stop) => stop.ids.includes(selectedVehicle.nextStopId!))
