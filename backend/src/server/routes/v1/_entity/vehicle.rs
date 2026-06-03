@@ -14,6 +14,8 @@ pub struct Vehicle {
     pub trip_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub route_long_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trip_headsign: Option<String>,
     pub latitude: f32,
     pub longitude: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -57,6 +59,9 @@ impl Vehicle {
             self.route_long_name
                 .as_deref()
                 .map_or(MixedValue::null(), MixedValue::from),
+            self.trip_headsign
+                .as_deref()
+                .map_or(MixedValue::null(), MixedValue::from),
         ]
     }
 }
@@ -90,6 +95,7 @@ impl TryFrom<&VehiclePosition> for Vehicle {
             route_id: trip_info.route_id().to_string(),
             trip_id: trip_info.trip_id().to_string(),
             route_long_name: None,
+            trip_headsign: None,
             latitude: position_info.latitude,
             longitude: position_info.longitude,
             bearing: position_info.bearing,

@@ -155,11 +155,9 @@ export function VehicleSheet({
               if (vehicle.tripId) params.set("trip", vehicle.tripId);
               const url = `${location.origin}${location.pathname}?${params}`;
               if (navigator.share) {
-                const title = vehicle.routeLongName
-                  ? `[${vehicle.routeId}] ${vehicle.routeLongName.trim()}`
-                  : `Route ${vehicle.routeId}`;
+                const shareTitle = `[${vehicle.routeId}] ${vehicle.getDisplayName()}`;
 
-                navigator.share({ title, url }).catch(() => {});
+                navigator.share({ title: shareTitle, url }).catch(() => {});
               } else {
                 navigator.clipboard.writeText(url).then(
                   () =>

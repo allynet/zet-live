@@ -8,14 +8,17 @@ use std::{
 use _entity::vehicle::Vehicle;
 use axum::{Router, routing::get};
 use tokio::sync::{RwLock, watch};
-use tracing::{error, trace};
+use tracing::{error, trace, warn};
 
 use crate::{
     database::Database,
     entity::util::{mixed_value::MixedValue, versioned::Versioned},
-    proto::gtfs_realtime::{
-        data::transit_realtime::FeedMessage,
-        fetcher::{get_cached_feed, wait_for_feed_update},
+    proto::{
+        gtfs_realtime::{
+            data::transit_realtime::FeedMessage,
+            fetcher::{get_cached_feed, wait_for_feed_update},
+        },
+        gtfs_schedule,
     },
 };
 
@@ -97,6 +100,11 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 .map(|x| x.trip_id().to_string())
                 .collect::<HashSet<_>>();
 
+            if current_feed_trip_ids.is_empty() {
+                warn!(?active_stops_feed, "Got empty active trips");
+                return;
+            }
+
             trace!(current_feed_trips = ?current_feed_trip_ids.len(), "Updating active trips");
             let stmts_start = Instant::now();
             let stmts = {
@@ -132,24 +140,32 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             }
 
             {
-                if let Ok(results) =
-                    Database::query::<crate::proto::gtfs_schedule::data::SimpleStop>(
-                        "
+                let stops = Database::query::<gtfs_schedule::data::SimpleStop>(
+                    "
                         SELECT DISTINCT
                             s.stop_id, s.stop_name, s.longitude, s.latitude
                         FROM live_trips lt
-                        LEFT JOIN gtfs_stop_times st on st.trip_id = lt.trip_id
-                        LEFT JOIN gtfs_stops s on s.stop_id = st.stop_id
+                        INNER JOIN gtfs_stop_times st on st.trip_id = lt.trip_id
+                        INNER JOIN gtfs_stops s on s.stop_id = st.stop_id
                         ",
-                        libsql::params![],
-                    )
-                    .await
-                {
-                    let stops = results
-                        .into_iter()
-                        .map(crate::proto::gtfs_schedule::data::stop::SimpleStop::into_vec)
-                        .collect::<Vec<_>>();
-                    SIMPLE_STOPS.write().await.clone_from(&stops);
+                    libsql::params![],
+                )
+                .await;
+
+                match stops {
+                    Ok(stops) => {
+                        let stops = stops
+                            .into_iter()
+                            .map(gtfs_schedule::data::stop::SimpleStop::into_vec)
+                            .collect::<Vec<_>>();
+
+                        if !stops.is_empty() {
+                            SIMPLE_STOPS.write().await.clone_from(&stops);
+                        }
+                    }
+                    Err(e) => {
+                        error!(?e, "Failed to query simple stops for active trips");
+                    }
                 }
             }
 
@@ -228,6 +244,12 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
         struct RouteLongNameRow {
             route_id: String,
             route_long_name: Option<String>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct TripHeadsignRow {
+            trip_id: String,
+            trip_headsign: Option<String>,
         }
 
         let current_stop_sequences = vehicles_feed
@@ -377,10 +399,40 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             }
         };
 
+        let trip_headsigns: HashMap<String, String> = {
+            let trip_ids = vehicles
+                .iter()
+                .map(|v| v.trip_id.clone())
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+
+            if trip_ids.is_empty() {
+                HashMap::new()
+            } else {
+                let placeholders = trip_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let query = format!(
+                    "SELECT trip_id, NULLIF(trip_headsign, '') AS trip_headsign FROM gtfs_trips \
+                     WHERE trip_id IN ({placeholders})"
+                );
+                let rows = Database::query::<TripHeadsignRow>(
+                    &query,
+                    libsql::params_from_iter(trip_ids.iter().map(String::as_str)),
+                )
+                .await
+                .unwrap_or_default();
+
+                rows.into_iter()
+                    .filter_map(|row| row.trip_headsign.map(|name| (row.trip_id, name)))
+                    .collect()
+            }
+        };
+
         let vehicles = vehicles
             .into_iter()
             .map(|mut v| {
                 v.route_long_name = route_long_names.get(&v.route_id).cloned();
+                v.trip_headsign = trip_headsigns.get(&v.trip_id).cloned();
                 if let Some((prev_lat, prev_lng, prev_bearing)) = previous_positions.get(&v.id) {
                     let dist = haversine_distance(*prev_lat, *prev_lng, v.latitude, v.longitude);
                     if dist < 5.0 {
@@ -481,6 +533,10 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     || "NULL".to_string(),
                     |v| format!("'{}'", v.replace('\'', "''")),
                 );
+                let trip_headsign_sql = vehicle.trip_headsign.as_deref().map_or_else(
+                    || "NULL".to_string(),
+                    |v| format!("'{}'", v.replace('\'', "''")),
+                );
 
                 let res = writeln!(
                     stmts,
@@ -489,6 +545,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     , route_id
                     , trip_id
                     , route_long_name
+                    , trip_headsign
                     , latitude
                     , longitude
                     , prev_latitude
@@ -512,11 +569,13 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     , {}
                     , {}
                     , {}
+                    , {}
                     );",
                     vehicle.id.replace('\'', "''"),
                     vehicle.route_id.replace('\'', "''"),
                     vehicle.trip_id.replace('\'', "''"),
                     route_long_name_sql,
+                    trip_headsign_sql,
                     vehicle.latitude,
                     vehicle.longitude,
                     prev_lat_sql,

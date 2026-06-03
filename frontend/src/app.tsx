@@ -3,6 +3,7 @@ import { BottomSheet } from "@/components/bottom-sheet";
 import { StopSheet } from "@/components/stop-sheet";
 import { VehicleSheet } from "@/components/vehicle-sheet";
 import { StatusBar } from "@/components/status-bar";
+import { SearchBar } from "@/components/search-bar";
 import { Toaster } from "sonner";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useStops } from "@/hooks/use-stops";
@@ -21,6 +22,7 @@ import {
 } from "@/state";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
 import type { ComponentChildren } from "preact";
+import { MapStyleSwitcher } from "./components/map-style-switcher";
 
 export function App() {
   useWebSocket();
@@ -48,7 +50,7 @@ export function App() {
   let minimizedBody: ComponentChildren | undefined;
 
   if (selectedVehicle) {
-    const routeTitle = selectedVehicle.routeLongName?.trim() || `Route ${selectedVehicle.routeId}`;
+    const routeTitle = selectedVehicle.getDisplayName();
     sheetTitle = (
       <div class="flex items-center gap-2">
         <span
@@ -154,7 +156,21 @@ export function App() {
           />
         ) : null}
       </BottomSheet>
-      <StatusBar />
+
+      <div class="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2 [&>*]:pointer-events-auto">
+        <div class="flex flex-col gap-2">
+          <MapStyleSwitcher />
+          <div>
+            <div class="absolute ml-1.5">
+              <StatusBar />
+            </div>
+          </div>
+        </div>
+        <div class="w-full max-w-md">
+          <SearchBar />
+        </div>
+      </div>
+
       <Toaster position="top-center" />
     </>
   );

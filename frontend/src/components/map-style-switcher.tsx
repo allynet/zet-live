@@ -30,7 +30,7 @@ export function MapStyleSwitcher() {
   }, [open]);
 
   return (
-    <div ref={panelRef} class="absolute top-14 left-2 z-1000">
+    <div ref={panelRef}>
       <button
         type="button"
         aria-label="Change map style"
@@ -66,7 +66,7 @@ export function MapStyleSwitcher() {
           aria-label="Map style panel"
           aria-modal="true"
           role="menu"
-          class="mt-1 flex flex-col gap-0.5 rounded-lg bg-white/90 p-1 shadow-md backdrop-blur-sm"
+          class="absolute z-1000 mt-1 flex flex-col gap-0.5 rounded-lg bg-white/90 p-1 shadow-md backdrop-blur-sm"
           id="map-style-panel"
         >
           {STYLES.map((s) => (

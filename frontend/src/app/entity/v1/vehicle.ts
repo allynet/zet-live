@@ -13,6 +13,7 @@ const SIMPLE_FIELD = {
   nextStopArrivalTime: 10,
   bearing: 11,
   routeLongName: 12,
+  tripHeadsign: 13,
 } as const;
 
 const SIMPLE_MIN_LENGTH = 5;
@@ -36,6 +37,7 @@ export class VehicleV1 {
   id: string;
   routeId: string;
   routeLongName: string | null;
+  tripHeadsign: string | null;
   tripId: string;
   lat: number;
   lng: number;
@@ -51,6 +53,7 @@ export class VehicleV1 {
     id: string;
     routeId: string;
     routeLongName?: string | null;
+    tripHeadsign?: string | null;
     tripId: string;
     latitude: number;
     longitude: number;
@@ -65,6 +68,7 @@ export class VehicleV1 {
     this.id = data.id;
     this.routeId = data.routeId;
     this.routeLongName = data.routeLongName ?? null;
+    this.tripHeadsign = data.tripHeadsign ?? null;
     this.tripId = data.tripId;
     this.lat = data.latitude;
     this.lng = data.longitude;
@@ -96,6 +100,7 @@ export class VehicleV1 {
       nextStopArrivalDelay: optionalNumber(data, SIMPLE_FIELD.nextStopArrivalDelay),
       nextStopArrivalTime: optionalNumber(data, SIMPLE_FIELD.nextStopArrivalTime),
       routeLongName: optionalString(data, SIMPLE_FIELD.routeLongName),
+      tripHeadsign: optionalString(data, SIMPLE_FIELD.tripHeadsign),
     });
   }
 
@@ -104,6 +109,7 @@ export class VehicleV1 {
       id: this.id,
       routeId: this.routeId,
       routeLongName: this.routeLongName,
+      tripHeadsign: this.tripHeadsign,
       tripId: this.tripId,
       latitude: this.lat,
       longitude: this.lng,
@@ -115,6 +121,10 @@ export class VehicleV1 {
       nextStopArrivalDelay: this.nextStopArrivalDelay,
       nextStopArrivalTime: this.nextStopArrivalTime,
     };
+  }
+
+  public getDisplayName(): string {
+    return this.tripHeadsign?.trim() || this.routeLongName?.trim() || `Route ${this.routeId}`;
   }
 
   public getMapId() {

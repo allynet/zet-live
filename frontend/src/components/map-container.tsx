@@ -24,6 +24,8 @@ import {
   maxBoundsSignal,
   flyToTargetSignal,
   mapStyleIdSignal,
+  searchMatchedVehicleMapIdsSignal,
+  searchMatchedStopIdsSignal,
   type MapStyleId,
 } from "@/state";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
@@ -76,6 +78,9 @@ export function MapContainer() {
   const followingRoute = useSignalState(followingRouteSignal);
   const maxBounds = useSignalState(maxBoundsSignal);
   const geolocPermission = useGeolocationPermission();
+  const searchMatchedVehicleIds = useSignalState(searchMatchedVehicleMapIdsSignal);
+  const searchMatchedStopIds = useSignalState(searchMatchedStopIdsSignal);
+  const searchActive = searchMatchedVehicleIds !== null || searchMatchedStopIds !== null;
 
   const selectedVehicle = followingVehicleId ? (vehicles.get(followingVehicleId) ?? null) : null;
   const nextStopId = selectedVehicle?.nextStopId ?? null;
@@ -175,10 +180,14 @@ export function MapContainer() {
     flyToTargetSignal.value = null;
   });
 
-  const vehiclesGeoJson = useMemo(
-    () => ({
+  const vehiclesGeoJson = useMemo(() => {
+    const all = Array.from(vehicles.values());
+    const filtered = searchMatchedVehicleIds
+      ? all.filter((v) => searchMatchedVehicleIds.has(v.getMapId()))
+      : all;
+    return {
       type: "FeatureCollection" as const,
-      features: Array.from(vehicles.values()).map((v) => {
+      features: filtered.map((v) => {
         const mapId = v.getMapId();
         const isFollowing =
           followingVehicleId === mapId || (followingTripIds?.has(v.tripId) ?? false);
@@ -201,9 +210,8 @@ export function MapContainer() {
           },
         };
       }),
-    }),
-    [vehicles, followingVehicleId, followingTripIds],
-  );
+    };
+  }, [vehicles, followingVehicleId, followingTripIds, searchMatchedVehicleIds]);
 
   const vehicleIconsToEnsure = useMemo<VehicleIconDescriptor[]>(() => {
     const unique = new Map<string, VehicleIconDescriptor>();
@@ -244,10 +252,13 @@ export function MapContainer() {
     [deltaMoveLines],
   );
 
-  const routeStopsFeatures = useMemo(
-    () => ({
+  const routeStopsFeatures = useMemo(() => {
+    const filtered = searchMatchedStopIds
+      ? displayedStops.filter((s) => s.ids.some((id) => searchMatchedStopIds.has(id)))
+      : displayedStops;
+    return {
       type: "FeatureCollection" as const,
-      features: displayedStops.map((stop) => ({
+      features: filtered.map((stop) => ({
         type: "Feature" as const,
         properties: {
           name: stop.name,
@@ -259,9 +270,8 @@ export function MapContainer() {
           coordinates: [stop.lng, stop.lat],
         },
       })),
-    }),
-    [displayedStops, nextStopId],
-  );
+    };
+  }, [displayedStops, nextStopId, searchMatchedStopIds]);
 
   const followingRouteFeatures = useMemo(
     () =>
@@ -292,6 +302,15 @@ export function MapContainer() {
   useEffect(() => {
     const map = mapRef.current?.getMap();
     if (!map) return;
+    const source = map.getSource("route-stops");
+    if (source && "setData" in source) {
+      (source as { setData: (data: unknown) => void }).setData(routeStopsFeatures);
+    }
+  }, [routeStopsFeatures]);
+
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
     map.setLayoutProperty("route-stops-label", "text-allow-overlap", isFollowingSomething);
     map.setLayoutProperty("route-stops-label", "text-ignore-placement", isFollowingSomething);
   }, [isFollowingSomething]);
@@ -311,10 +330,12 @@ export function MapContainer() {
 
   const vehicleMarkerPaint = useMemo(
     () =>
-      ({
-        "icon-opacity": ["case", ["==", ["get", "followingState"], 2], 0.1, 1],
-      }) as const,
-    [],
+      searchActive
+        ? ({} as const)
+        : ({
+            "icon-opacity": ["case", ["==", ["get", "followingState"], 2], 0.1, 1],
+          } as const),
+    [searchActive],
   );
 
   return (
@@ -374,6 +395,7 @@ export function MapContainer() {
             layout={{
               "line-join": "round",
               "line-cap": "round",
+              visibility: searchActive ? "none" : "visible",
             }}
           />
           <Layer
@@ -386,12 +408,10 @@ export function MapContainer() {
               "icon-image": "arrow-head",
               "text-ignore-placement": true,
               "icon-size": 0.25,
-              visibility: "visible",
+              visibility: searchActive ? "none" : "visible",
             }}
           />
         </Source>
-
-        <Source id="route-stops" type="geojson" data={routeStopsFeatures} />
 
         <Source id="current-following-route" type="geojson" data={followingRouteFeatures}>
           <Layer
@@ -421,7 +441,6 @@ export function MapContainer() {
           />
         </Source>
       </MapGL>
-      <MapStyleSwitcher />
     </div>
   );
 }

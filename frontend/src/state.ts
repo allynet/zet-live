@@ -68,6 +68,9 @@ export const maxBoundsSignal = signal<[[number, number], [number, number]] | nul
 
 export const flyToTargetSignal = signal<{ longitude: number; latitude: number } | null>(null);
 
+export const searchMatchedVehicleMapIdsSignal = signal<Set<string> | null>(null);
+export const searchMatchedStopIdsSignal = signal<Set<string> | null>(null);
+
 export type MapStyleId = "3d" | "3d.dark" | "flat" | "satellite";
 
 const MAP_STYLE_STORAGE_KEY = "map-style";
