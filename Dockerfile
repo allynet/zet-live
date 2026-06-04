@@ -106,6 +106,7 @@ ARG APP_FEATURES
 ARG BINARY_NAME
 COPY --from=frontend /app/dist ../frontend/dist
 RUN --mount=type=bind,target=.,source=./backend,rw \
+  --mount=type=bind,target=.git,source=./.git,ro \
   cargo build \
   --release \
   --target "${RUST_TARGET}" \
