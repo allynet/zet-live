@@ -22,6 +22,7 @@ import {
   deltaMoveLinesSignal,
   displayedStopsSignal,
   followingRouteSignal,
+  mapReadySignal,
   maxBoundsSignal,
   flyToTargetSignal,
   mapStyleIdSignal,
@@ -218,6 +219,7 @@ export function MapContainer() {
 
     map.setMaxBounds(maxBoundsSignal.value);
     setIconsReady(true);
+    mapReadySignal.value = true;
   }, []);
 
   const onDragStart = useCallback(() => {

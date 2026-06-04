@@ -4,6 +4,7 @@ import { StopSheet } from "@/components/stop-sheet";
 import { VehicleSheet } from "@/components/vehicle-sheet";
 import { StatusBar } from "@/components/status-bar";
 import { SearchBar } from "@/components/search-bar";
+import { LoadingScreen } from "@/components/loading-screen";
 import { Toaster } from "sonner";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useSignalState } from "@/hooks/use-signal-state";
@@ -113,6 +114,7 @@ export function App() {
 
   return (
     <>
+      <LoadingScreen />
       <MapContainer />
       <BottomSheet
         open={isOpen}

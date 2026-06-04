@@ -62,7 +62,18 @@
     <meta name="fediverse:creator" content="@Allypost@mastodon.social" />
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div id="loading-fallback" style="display:flex;align-items:center;justify-content:center;height:100%;font-family:sans-serif;background:#fff">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:16px">
+          <h1 style="font-size:24px;font-weight:bold;margin:0">ZET Live</h1>
+          <div style="width:20px;height:20px;border:2px solid #d1d5db;border-top-color:#111827;border-radius:50%;animation:spin 1s linear infinite"></div>
+          <noscript>
+            <p style="color:#6b7280;font-size:14px;margin:0">JavaScript is required to use ZET Live.</p>
+          </noscript>
+        </div>
+      </div>
+      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
