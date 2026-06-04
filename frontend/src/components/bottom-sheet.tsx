@@ -24,7 +24,7 @@ type DragInfo = {
 };
 
 const SPRING = { type: "spring" as const, damping: 25, stiffness: 300 };
-const ENTER = { type: "tween" as const, duration: 0.3, ease: [0.32, 0.72, 0, 1] };
+const ENTER = { type: "tween" as const, duration: 0.3, ease: [0.32, 0.72, 0, 1] as const };
 const DRAG_THRESHOLD = 50;
 const VELOCITY_THRESHOLD = 500;
 

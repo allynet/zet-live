@@ -1,4 +1,3 @@
-// @ts-expect-error: Vite defines __DATE__
 export const BUILD_DATE = new Date(__DATE__);
 
 export const SITE_TITLE = "ZET Live";

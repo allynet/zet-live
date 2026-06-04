@@ -383,25 +383,24 @@ export function MapContainer() {
     map.setLayoutProperty("route-stops-label", "text-ignore-placement", isFollowingSomething);
   }, [isFollowingSomething]);
 
-  const vehicleMarkerLayout = useMemo(
-    () =>
-      ({
-        "icon-image": ["get", "iconName"],
-        "symbol-z-order": "source",
-        "icon-allow-overlap": true,
-        "icon-ignore-placement": true,
-        "symbol-sort-key": ["get", "sortKey"],
-      }) as const,
+  const vehicleMarkerLayout: Record<string, unknown> = useMemo(
+    () => ({
+      "icon-image": ["get", "iconName"],
+      "symbol-z-order": "source",
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+      "symbol-sort-key": ["get", "sortKey"],
+    }),
     [],
   );
 
-  const vehicleMarkerPaint = useMemo(
+  const vehicleMarkerPaint: Record<string, unknown> | undefined = useMemo(
     () =>
       searchActive
         ? undefined
-        : ({
+        : {
             "icon-opacity": ["case", ["==", ["get", "followingState"], 2], 0.1, 1],
-          } as const),
+          },
     [searchActive],
   );
 
