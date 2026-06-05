@@ -21,12 +21,19 @@ import {
 } from "@/state";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
 import type { ComponentChildren } from "preact";
-import { MapStyleSwitcher } from "./components/map-style-switcher";
+import { SettingsButton, SettingsModal } from "./components/settings-modal";
+import { useWakeLock } from "@/hooks/use-wake-lock";
+import { settingSignal } from "./settings";
+
+const wakeLockEnabledSignal = settingSignal("wakeLockEnabled");
 
 export function App() {
   useWebSocket();
   useUrlSync();
   useVersionCheck();
+
+  const wakeLockEnabled = useSignalState(wakeLockEnabledSignal);
+  useWakeLock(wakeLockEnabled);
 
   const selectedStop = useSignalState(selectedStopSignal);
   const selectedVehicle = useSignalState(selectedVehicleSignal);
@@ -155,7 +162,7 @@ export function App() {
 
       <div class="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2 [&>*]:pointer-events-auto">
         <div class="flex flex-col gap-2">
-          <MapStyleSwitcher />
+          <SettingsButton />
           <div>
             <div class="absolute ml-1.5">
               <StatusBar />
@@ -168,6 +175,7 @@ export function App() {
       </div>
 
       <Toaster position="top-center" />
+      <SettingsModal />
     </>
   );
 }

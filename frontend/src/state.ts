@@ -78,33 +78,6 @@ export const flyToTargetSignal = signal<{ longitude: number; latitude: number } 
 export const searchMatchedVehicleMapIdsSignal = signal<Set<string> | null>(null);
 export const searchMatchedStopIdsSignal = signal<Set<string> | null>(null);
 
-export type MapStyleId = "3d" | "3d.dark" | "flat" | "satellite";
-
-const MAP_STYLE_STORAGE_KEY = "map-style";
-
-function loadMapStyleId(): MapStyleId {
-  try {
-    const stored = localStorage.getItem(MAP_STYLE_STORAGE_KEY);
-    if (stored === "3d" || stored === "3d.dark" || stored === "flat" || stored === "satellite") {
-      return stored;
-    }
-  } catch {
-    // localStorage unavailable
-  }
-  return "3d";
-}
-
-export const mapStyleIdSignal = signal<MapStyleId>(loadMapStyleId());
-
-export function setMapStyleId(id: MapStyleId) {
-  try {
-    localStorage.setItem(MAP_STYLE_STORAGE_KEY, id);
-    globalThis.location.reload();
-  } catch {
-    // localStorage unavailable
-  }
-}
-
 export function updateMaxBounds() {
   const stopBounds = stopBoundsSignal.value;
   const vehicleBounds = vehicleBoundsSignal.value;

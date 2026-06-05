@@ -25,11 +25,10 @@ import {
   mapReadySignal,
   maxBoundsSignal,
   flyToTargetSignal,
-  mapStyleIdSignal,
   searchMatchedVehicleMapIdsSignal,
   searchMatchedStopIdsSignal,
-  type MapStyleId,
 } from "@/state";
+import { settingSignal, type MapStyleId } from "@/settings";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
 import { useSignalState } from "@/hooks/use-signal-state";
 import { useGeolocationPermission } from "@/hooks/use-geolocation-permission";
@@ -50,6 +49,7 @@ const styleMap = new Map<MapStyleId, StyleSpecification>([
   ["satellite", mapStyleSatellite as StyleSpecification],
 ]);
 
+const mapStyleIdSignal = settingSignal("mapStyle");
 const mapStyle = styleMap.get(mapStyleIdSignal.value) ?? (mapStyle3d as StyleSpecification);
 
 const emptyGeoJSON: FeatureCollection = {
