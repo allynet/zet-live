@@ -4,20 +4,23 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use super::{FileData, WheelchairBoarding};
-use crate::proto::gtfs_schedule::data::QueryData;
+use crate::{proto::gtfs_schedule::data::BulkInsert, sqlx_int_enum_decode};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct Trip {
     #[serde(alias = "trip_id")]
+    #[sqlx(rename = "trip_id")]
     pub id: String,
     #[serde(alias = "route_id")]
-    pub route_id: u32,
+    pub route_id: String,
     #[serde(alias = "service_id")]
     pub service_id: String,
     #[serde(alias = "trip_headsign")]
+    #[sqlx(rename = "trip_headsign")]
     pub headsign: Option<String>,
     #[serde(alias = "trip_short_name")]
+    #[sqlx(rename = "trip_short_name")]
     pub short_name: Option<String>,
     #[serde(alias = "direction_id")]
     pub direction_id: Option<Direction>,
@@ -33,6 +36,7 @@ pub struct Trip {
     pub bikes_allowed: BikesAllowed,
     #[serde(default)]
     #[serde(alias = "stop_ids")]
+    #[sqlx(skip)]
     pub stop_ids: Vec<String>,
 }
 
@@ -45,66 +49,29 @@ impl FileData for Trip {
         "gtfs_trips"
     }
 
-    fn into_insert_query(self) -> QueryData {
-        let query = "
-        insert into
-            gtfs_trips
-                ( trip_id
-                , route_id
-                , service_id
-                , trip_headsign
-                , trip_short_name
-                , direction_id
-                , block_id
-                , shape_id
-                , wheelchair_boarding
-                , bikes_allowed
-                )
-            values
-                ( :trip_id
-                , :route_id
-                , :service_id
-                , :trip_headsign
-                , :trip_short_name
-                , :direction_id
-                , :block_id
-                , :shape_id
-                , :wheelchair_boarding
-                , :bikes_allowed
-                )
-        ";
-
-        let params = libsql::named_params! {
-            ":trip_id": self.id.clone(),
-            ":route_id": self.route_id,
-            ":service_id": self.service_id,
-            ":trip_headsign": self.headsign,
-            ":trip_short_name": self.short_name,
-            ":direction_id": self.direction_id.map(|x| x as u8),
-            ":block_id": self.block_id,
-            ":shape_id": self.shape_id,
-            ":wheelchair_boarding": self.wheelchair_boarding as u8,
-            ":bikes_allowed": self.bikes_allowed as u8,
-        }
-        .into_iter()
-        .map(|(x, y)| (x.to_string(), y))
-        .collect::<Vec<_>>();
-
-        QueryData {
-            query: query.to_string(),
-            params,
-        }
+    fn into_bulk_insert(self) -> BulkInsert {
+        BulkInsert::Trip(self)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize_repr, Deserialize_repr, sqlx::Type)]
 #[repr(u8)]
 pub enum Direction {
     Outbound = 0,
     Inbound = 1,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
+sqlx_int_enum_decode!(Direction, |val| {
+    match val {
+        0 => Ok(Direction::Outbound),
+        1 => Ok(Direction::Inbound),
+        _ => Err(format!("unknown Direction: {val}").into()),
+    }
+});
+
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize_repr, Deserialize_repr, sqlx::Type,
+)]
 #[repr(u8)]
 pub enum BikesAllowed {
     #[default]
@@ -112,3 +79,12 @@ pub enum BikesAllowed {
     Allowed = 1,
     NotAllowed = 2,
 }
+
+sqlx_int_enum_decode!(BikesAllowed, |val| {
+    match val {
+        0 => Ok(BikesAllowed::Unknown),
+        1 => Ok(BikesAllowed::Allowed),
+        2 => Ok(BikesAllowed::NotAllowed),
+        _ => Err(format!("unknown BikesAllowed: {val}").into()),
+    }
+});

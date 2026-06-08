@@ -4,7 +4,6 @@ use std::{
     time::Duration,
 };
 
-use libsql::named_params;
 use tokio::sync::Notify;
 use tracing::{debug, trace, warn};
 
@@ -53,7 +52,7 @@ pub enum FetcherError {
     #[error("Failed to parse file: {0:?}")]
     Parse(#[from] super::data::FileDataError),
     #[error("Got database error: {0:?}")]
-    Database(#[from] libsql::errors::Error),
+    Database(#[from] sqlx::Error),
 }
 
 async fn fetch_and_update_schedule() -> Result<(), FetcherError> {
@@ -107,23 +106,19 @@ async fn fetch_newer_schedule() -> Result<Option<()>, FetcherError> {
 
     trace!(?modified, ?etag, "Got schedule metadata");
 
-    let res = Database::conn()
-        .read()
-        .await
-        .query(
-            "select * from gtfs_schedule_meta where (last_modified >= :modified) or (etag = \
-             :etag) limit 1",
-            named_params! {
-                ":modified": modified,
-                ":etag": etag.clone(),
-            },
+    let etag_param = etag.clone();
+    let res = Database::logged(
+        "schedule_meta_check",
+        sqlx::query!(
+            "SELECT * FROM gtfs_schedule_meta WHERE last_modified >= ? OR etag = ? LIMIT 1",
+            modified,
+            etag_param,
         )
-        .await
-        .map_err(FetcherError::Database)?
-        .next()
-        .await
-        .map_err(FetcherError::Database)?
-        .is_some();
+        .fetch_optional(&Database::pool()),
+    )
+    .await
+    .map_err(FetcherError::Database)?
+    .is_some();
 
     trace!(have_data = ?res, "Checking schedule metadata");
 
@@ -144,18 +139,17 @@ async fn fetch_newer_schedule() -> Result<Option<()>, FetcherError> {
 
     debug!("Schedule read to database, committing metadata");
 
-    Database::conn()
-        .write()
-        .await
-        .execute(
-            "insert into gtfs_schedule_meta (last_modified, etag) values (:last_modified, :etag)",
-            named_params! {
-                ":last_modified": modified,
-                ":etag": etag,
-            },
+    Database::logged(
+        "schedule_meta_insert",
+        sqlx::query!(
+            "INSERT INTO gtfs_schedule_meta (last_modified, etag) VALUES (?, ?)",
+            modified,
+            etag,
         )
-        .await
-        .map_err(FetcherError::Database)?;
+        .execute(&Database::pool()),
+    )
+    .await
+    .map_err(FetcherError::Database)?;
 
     debug!("Schedule updated");
 

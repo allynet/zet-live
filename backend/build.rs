@@ -8,5 +8,8 @@ fn main() -> Result<()> {
 
     build_info_build::build_script();
 
+    // Rerun build if sql migrations change
+    println!("cargo:rerun-if-changed=migrations");
+
     Ok(())
 }

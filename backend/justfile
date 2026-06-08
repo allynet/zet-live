@@ -8,6 +8,7 @@ default:
     @just --list
 
 build:
+    SQLX_OFFLINE=true \
     RUSTFLAGS='{{ rustflags }}' \
     cargo build \
         --release \
@@ -40,6 +41,7 @@ watch *args:
             just run "$@"
 
 run *args:
+    SQLX_OFFLINE=true \
     RUSTFLAGS='{{ rustflags }}' \
     cargo run \
         --target '{{ rust_target }}' \
@@ -47,6 +49,7 @@ run *args:
         -- "$@" \
 
 test *args:
+    SQLX_OFFLINE=true \
     RUSTFLAGS='{{ rustflags }}' \
     cargo test \
         --workspace \
@@ -63,7 +66,7 @@ test-watch *args:
         -- \
             just test "$@"
 
-fmt-dev: && fmt
+fmt-dev: lint-fix && fmt
     rustup run nightly cargo fmt --all \
 
 lint:
@@ -81,11 +84,52 @@ lint-fix:
         --all-features \
         -- \
 
-fmt: lint-fix
+fmt:
     cargo fmt --all \
 
-migrations-add *name:
+sqlx-regenerate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    TEMP_DIR="$(mktemp -d)"
+    TEMP_DB="$TEMP_DIR/zet-live.db"
+    export DATABASE_URL="sqlite://$TEMP_DB"
+    export SQLX_OFFLINE=""
+    touch "$TEMP_DB"
+    trap "rm -rf '$TEMP_DIR'" EXIT
+    cargo sqlx database create
+    cargo sqlx migrate run
+    cargo sqlx prepare --workspace
+
+migrations-run: _migrations-ensure-db
+    sqlx migrate run \
+
+migrations-list: _migrations-ensure-db
+    sqlx migrate info \
+
+_migrations-ensure-db:
+    #!/usr/bin/env bash
+    if [ -z "$DATABASE_URL" ]; then
+      echo "DATABASE_URL is not set";
+      exit 1;
+    fi
+    if echo "$DATABASE_URL" | grep -v '^sqlite[0-9]*:'; then
+      exit 0;
+    fi
+    url="$(echo "$DATABASE_URL" | sed -re 's,^(.*:(//)?)(.*),\3,g')"
+    if [ -z "$url" ]; then
+      echo "Could not extract path from database URL: $DATABASE_URL";
+      exit 1;
+    fi
+    if [ -f "$url" ]; then
+      exit 0;
+    fi
+    echo "Database file does not exist, creating it: $url";
+    mkdir -p "$(dirname "$url")"
+    touch "$url"
+
+migrations-add $name="":
+    name="{{ name }}"; \
     if [ -z "$name" ]; then \
-        read -p "Enter migration name: " name \
-    fi \
-    touch src/database/migrations/$(date +%s)_$name.sql \
+        read -p "Enter migration name: " name; \
+    fi; \
+    sqlx migrate add -r "$name" \

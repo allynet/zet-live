@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                    st.stop_id,\n                    st.stop_sequence,\n                    st.arrival_time,\n                    st.arrival_time_seconds,\n                    s.stop_name\n                FROM gtfs_stop_times st\n                LEFT JOIN gtfs_stops s ON s.stop_id = st.stop_id\n                WHERE st.trip_id = ?\n                ORDER BY st.stop_sequence",
+  "describe": {
+    "columns": [
+      {
+        "name": "stop_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "stop_id"
+          }
+        }
+      },
+      {
+        "name": "stop_sequence",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "stop_sequence"
+          }
+        }
+      },
+      {
+        "name": "arrival_time",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "arrival_time"
+          }
+        }
+      },
+      {
+        "name": "arrival_time_seconds",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "arrival_time_seconds"
+          }
+        }
+      },
+      {
+        "name": "stop_name",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "stop_name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "4f4d0d39065c79d7120d411aab5cfcf1de005c373352fb0c73727ffa58a5a0d2"
+}

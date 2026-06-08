@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                        SELECT DISTINCT\n                            s.stop_id, s.stop_name, s.longitude, s.latitude\n                        FROM live_trips lt\n                        INNER JOIN gtfs_stop_times st on st.trip_id = lt.trip_id\n                        INNER JOIN gtfs_stops s on s.stop_id = st.stop_id\n                        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "stop_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "stop_id"
+          }
+        }
+      },
+      {
+        "name": "stop_name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "stop_name"
+          }
+        }
+      },
+      {
+        "name": "longitude",
+        "ordinal": 2,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "longitude"
+          }
+        }
+      },
+      {
+        "name": "latitude",
+        "ordinal": 3,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "latitude"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "e5606043405dbd4f0c2edbe9e5e8298db79b5099abb558ba55301bc8e44bd94e"
+}

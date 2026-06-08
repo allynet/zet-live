@@ -1,0 +1,182 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT * FROM live_vehicles",
+  "describe": {
+    "columns": [
+      {
+        "name": "vehicle_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "vehicle_id"
+          }
+        }
+      },
+      {
+        "name": "route_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "route_id"
+          }
+        }
+      },
+      {
+        "name": "trip_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "trip_id"
+          }
+        }
+      },
+      {
+        "name": "latitude",
+        "ordinal": 3,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "latitude"
+          }
+        }
+      },
+      {
+        "name": "longitude",
+        "ordinal": 4,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "longitude"
+          }
+        }
+      },
+      {
+        "name": "prev_latitude",
+        "ordinal": 5,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "prev_latitude"
+          }
+        }
+      },
+      {
+        "name": "prev_longitude",
+        "ordinal": 6,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "prev_longitude"
+          }
+        }
+      },
+      {
+        "name": "next_stop_id",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "next_stop_id"
+          }
+        }
+      },
+      {
+        "name": "next_stop_sequence",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "next_stop_sequence"
+          }
+        }
+      },
+      {
+        "name": "next_stop_arrival_delay",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "next_stop_arrival_delay"
+          }
+        }
+      },
+      {
+        "name": "next_stop_arrival_time",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "next_stop_arrival_time"
+          }
+        }
+      },
+      {
+        "name": "bearing",
+        "ordinal": 11,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "bearing"
+          }
+        }
+      },
+      {
+        "name": "route_long_name",
+        "ordinal": 12,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "route_long_name"
+          }
+        }
+      },
+      {
+        "name": "trip_headsign",
+        "ordinal": 13,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "trip_headsign"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "9dd8abe432d0fb725b8901ceca20c07cbba0c73c978b3f192f49920ec726e8da"
+}

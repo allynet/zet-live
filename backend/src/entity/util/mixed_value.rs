@@ -4,9 +4,11 @@ pub enum MixedValue {
     Null(Null),
     String(String),
     I32(i32),
+    I64(i64),
     U32(u32),
     U64(u64),
     F32(f32),
+    F64(f64),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -56,5 +58,10 @@ impl From<i32> for MixedValue {
 impl From<f32> for MixedValue {
     fn from(value: f32) -> Self {
         Self::F32(value)
+    }
+}
+impl From<f64> for MixedValue {
+    fn from(value: f64) -> Self {
+        Self::F64(value)
     }
 }

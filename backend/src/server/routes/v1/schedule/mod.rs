@@ -4,43 +4,103 @@ use axum::{extract::Path, http::HeaderMap, response::IntoResponse};
 use axum_extra::extract::Query;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use sqlx::{AssertSqlSafe, FromRow};
 use tracing::{debug, error};
 
 use crate::{
     database::Database,
     entity::util::versioned::Versioned,
-    proto::gtfs_schedule::data::{Route, Shape, SimpleStop, Trip, shape::SimpleShape},
+    proto::gtfs_schedule::data::{Route, Shape, SimpleStop, Trip},
     server::request::JsonOrAccept,
 };
 
 async fn get_base_midnight() -> i64 {
-    Database::query_one::<BaseMidnightRow>(
-        "SELECT base_midnight FROM live_feed_metadata WHERE id = 0",
-        libsql::params![],
+    Database::logged(
+        "get_base_midnight",
+        sqlx::query_scalar!("SELECT base_midnight FROM live_feed_metadata WHERE id = 0")
+            .fetch_optional(&Database::pool()),
     )
     .await
     .ok()
     .flatten()
-    .map_or(0, |r| r.base_midnight)
+    .unwrap_or_default()
 }
 
 pub async fn get_routes(headers: HeaderMap) -> impl IntoResponse {
-    let routes = Database::query::<Route>("SELECT * FROM gtfs_routes", libsql::params![])
-        .await
-        .unwrap_or_default();
+    let routes = Database::logged(
+        "get_routes",
+        sqlx::query!(
+            "
+            SELECT *
+            FROM gtfs_routes
+            "
+        )
+        .fetch_all(&Database::pool()),
+    )
+    .await
+    .map(|x| {
+        x.into_iter()
+            .map(|x| Route {
+                id: x.route_id,
+                agency_id: x.agency_id,
+                short_name: x.route_short_name,
+                long_name: x.route_long_name,
+                desc: x.route_desc,
+                url: x.route_url.and_then(|u| url::Url::parse(&u).ok()),
+                color: x.route_color.unwrap_or_else(Route::default_route_color),
+                text_color: x
+                    .route_text_color
+                    .unwrap_or_else(Route::default_route_text_color),
+                route_type: x.route_type.and_then(|t| t.try_into().ok()),
+                continuous_pickup: Default::default(),
+                continuous_drop_off: Default::default(),
+                network_id: None,
+                sort_order: None,
+            })
+            .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
 
     JsonOrAccept(Versioned::new(1, routes), headers).into_response()
 }
 
 pub async fn get_route(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
-    let route = Database::query_one::<Route>(
-        "SELECT * FROM gtfs_routes WHERE route_id = ?",
-        libsql::params![id.clone()],
+    let route = Database::logged(
+        "get_route",
+        sqlx::query!(
+            "
+                SELECT *
+                FROM gtfs_routes
+                WHERE route_id = ?
+                ",
+            id
+        )
+        .fetch_optional(&Database::pool()),
     )
     .await;
 
     match route {
-        Ok(Some(route)) => JsonOrAccept(Versioned::new(1, route), headers).into_response(),
+        Ok(Some(route)) => {
+            let route = Route {
+                id: route.route_id,
+                agency_id: route.agency_id,
+                short_name: route.route_short_name,
+                long_name: route.route_long_name,
+                desc: route.route_desc,
+                url: route.route_url.and_then(|u| url::Url::parse(&u).ok()),
+                color: route.route_color.unwrap_or_else(Route::default_route_color),
+                text_color: route
+                    .route_text_color
+                    .unwrap_or_else(Route::default_route_text_color),
+                route_type: route.route_type.and_then(|t| t.try_into().ok()),
+                continuous_pickup: Default::default(),
+                continuous_drop_off: Default::default(),
+                network_id: None,
+                sort_order: None,
+            };
+
+            JsonOrAccept(Versioned::new(1, route), headers).into_response()
+        }
         Ok(None) => (StatusCode::NOT_FOUND, "Route not found").into_response(),
         Err(e) => {
             error!(%e, ?id, "Failed to get route");
@@ -50,22 +110,66 @@ pub async fn get_route(headers: HeaderMap, Path(id): Path<String>) -> impl IntoR
 }
 
 pub async fn get_stops(headers: HeaderMap) -> impl IntoResponse {
-    let stops = Database::query::<SimpleStop>("SELECT * FROM gtfs_stops", libsql::params![])
-        .await
-        .unwrap_or_default();
+    let stops = Database::logged(
+        "get_stops",
+        sqlx::query!(
+            "
+            SELECT
+                  stop_id
+                , stop_name
+                , latitude
+                , longitude
+            FROM gtfs_stops
+            "
+        )
+        .fetch_all(&Database::pool()),
+    )
+    .await
+    .map(|x| {
+        x.into_iter()
+            .map(|x| SimpleStop {
+                id: x.stop_id,
+                name: x.stop_name.unwrap_or_default(),
+                latitude: x.latitude.unwrap_or_default(),
+                longitude: x.longitude.unwrap_or_default(),
+            })
+            .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
 
     JsonOrAccept(Versioned::new(1, stops), headers).into_response()
 }
 
 pub async fn get_stop(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
-    let stop = Database::query_one::<SimpleStop>(
-        "SELECT * FROM gtfs_stops WHERE stop_id = ?",
-        libsql::params![id.clone()],
+    let stop = Database::logged(
+        "get_stop",
+        sqlx::query!(
+            "
+            SELECT
+                  stop_id
+                , stop_name
+                , latitude
+                , longitude
+            FROM gtfs_stops
+            WHERE stop_id = ?
+            ",
+            id
+        )
+        .fetch_optional(&Database::pool()),
     )
     .await;
 
     match stop {
-        Ok(Some(stop)) => JsonOrAccept(Versioned::new(1, stop), headers).into_response(),
+        Ok(Some(stop)) => {
+            let stop = SimpleStop {
+                id: stop.stop_id,
+                name: stop.stop_name.unwrap_or_default(),
+                latitude: stop.latitude.unwrap_or_default(),
+                longitude: stop.longitude.unwrap_or_default(),
+            };
+
+            JsonOrAccept(Versioned::new(1, stop), headers).into_response()
+        }
         Ok(None) => (StatusCode::NOT_FOUND, "Stop not found").into_response(),
         Err(e) => {
             error!(%e, ?id, "Failed to get stop");
@@ -111,41 +215,66 @@ pub async fn get_stop_trips(
         .into_response();
     }
 
-    let stop_placeholders = query.stop.iter().map(|_| "?").collect::<Vec<_>>();
-    let stop_list = stop_placeholders.join(", ");
-
     let global_base_midnight = get_base_midnight().await;
 
-    let rows = match Database::query::<StopTripRow>(
-        &format!(
-            "SELECT
-            lv.vehicle_id,
-            lv.trip_id,
-            lv.route_id,
-            gst.stop_id,
-            gst.stop_sequence,
-            lv.next_stop_sequence,
-            lst.arrival_time     AS live_arrival_time,
-            lst.arrival_delay    AS live_arrival_delay,
-            gst.arrival_time_seconds,
-            (SELECT lst2.arrival_delay FROM live_trip_stop_times lst2
-             WHERE lst2.trip_id = lv.trip_id
-               AND lst2.stop_sequence <= gst.stop_sequence
-               AND lst2.arrival_delay IS NOT NULL
-             ORDER BY lst2.stop_sequence DESC LIMIT 1
+    let sql = format!(
+        "
+        SELECT
+              lv.vehicle_id
+            , lv.trip_id
+            , lv.route_id
+            , gst.stop_id
+            , gst.stop_sequence
+            , lv.next_stop_sequence
+            , lst.arrival_time  AS live_arrival_time
+            , lst.arrival_delay AS live_arrival_delay
+            , gst.arrival_time_seconds
+            , (
+                SELECT
+                    lst2.arrival_delay
+                FROM live_trip_stop_times lst2
+                WHERE   lst2.trip_id = lv.trip_id
+                    AND lst2.stop_sequence <= gst.stop_sequence
+                    AND lst2.arrival_delay IS NOT NULL
+                ORDER BY lst2.stop_sequence DESC LIMIT 1
             ) AS effective_delay
-         FROM live_vehicles lv
-         JOIN gtfs_stop_times gst ON gst.trip_id = lv.trip_id
-         LEFT JOIN live_trip_stop_times lst
-                ON lst.trip_id = lv.trip_id
-               AND lst.stop_sequence = gst.stop_sequence
-         WHERE gst.stop_id IN ({stop_list})
-         ORDER BY gst.stop_sequence"
-        ),
-        libsql::params_from_iter(query.stop.clone()),
-    )
-    .await
-    {
+        FROM live_vehicles lv
+        JOIN gtfs_stop_times gst ON gst.trip_id = lv.trip_id
+        LEFT JOIN live_trip_stop_times lst
+            ON  lst.trip_id = lv.trip_id
+            AND lst.stop_sequence = gst.stop_sequence
+        WHERE gst.stop_id IN ({})
+        ORDER BY gst.stop_sequence
+        ",
+        query
+            .stop
+            .iter()
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(", "),
+    );
+
+    let mut q = {
+        #[derive(Debug, FromRow)]
+        struct StopTripRow {
+            vehicle_id: String,
+            trip_id: String,
+            route_id: String,
+            stop_id: String,
+            stop_sequence: u32,
+            next_stop_sequence: Option<u32>,
+            live_arrival_time: Option<i64>,
+            live_arrival_delay: Option<i32>,
+            arrival_time_seconds: Option<i64>,
+            effective_delay: Option<i32>,
+        }
+
+        sqlx::query_as::<_, StopTripRow>(AssertSqlSafe(sql))
+    };
+    for stop in &query.stop {
+        q = q.bind(stop.clone());
+    }
+    let rows = match Database::logged("get_stop_trips", q.fetch_all(&Database::pool())).await {
         Ok(rows) => rows,
         Err(e) => {
             error!(%e, "Failed to get stop trips");
@@ -247,35 +376,120 @@ pub async fn get_stop_trips(
 }
 
 pub async fn get_trips(headers: HeaderMap) -> impl IntoResponse {
-    let trips = Database::query::<Trip>("SELECT * FROM gtfs_trips", libsql::params![])
-        .await
-        .unwrap_or_default();
+    let trips = Database::logged(
+        "get_trips",
+        sqlx::query!(
+            "
+            SELECT
+                trip_id
+                , route_id
+                , service_id
+                , trip_headsign
+                , trip_short_name
+                , direction_id
+                , block_id
+                , shape_id
+                , wheelchair_boarding
+                , bikes_allowed
+            FROM gtfs_trips
+            "
+        )
+        .fetch_all(&Database::pool()),
+    )
+    .await
+    .map(|rows| {
+        rows.into_iter()
+            .filter_map(|row| {
+                Some(Trip {
+                    id: row.trip_id,
+                    route_id: row.route_id?,
+                    service_id: row.service_id?,
+                    headsign: row.trip_headsign,
+                    short_name: row.trip_short_name,
+                    direction_id: row.direction_id.and_then(|d| d.try_into().ok()),
+                    block_id: row.block_id,
+                    shape_id: row.shape_id,
+                    wheelchair_boarding: row
+                        .wheelchair_boarding
+                        .and_then(|d| d.try_into().ok())
+                        .unwrap_or_default(),
+                    bikes_allowed: row
+                        .bikes_allowed
+                        .and_then(|d| d.try_into().ok())
+                        .unwrap_or_default(),
+                    stop_ids: vec![],
+                })
+            })
+            .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
 
     JsonOrAccept(Versioned::new(1, trips), headers).into_response()
 }
 
 pub async fn get_trip(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
-    let trip = Database::query_one::<Trip>(
-        "SELECT * FROM gtfs_trips WHERE trip_id = ?",
-        libsql::params![id.clone()],
+    let trip = Database::logged(
+        "get_trip",
+        sqlx::query!(
+            "
+            SELECT
+                trip_id
+                , route_id
+                , service_id
+                , trip_headsign
+                , trip_short_name
+                , direction_id
+                , block_id
+                , shape_id
+                , wheelchair_boarding
+                , bikes_allowed
+            FROM gtfs_trips
+            WHERE trip_id = ?
+            ",
+            id
+        )
+        .fetch_optional(&Database::pool()),
     )
     .await;
 
-    match trip {
-        Ok(Some(trip)) => JsonOrAccept(Versioned::new(1, trip), headers).into_response(),
-        Ok(None) => (StatusCode::NOT_FOUND, "Trip not found").into_response(),
+    let trip = match trip {
+        Ok(trip) => trip,
         Err(e) => {
             error!(%e, ?id, "Failed to get trip");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get trip").into_response()
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get trip").into_response();
         }
-    }
+    };
+
+    let trip = trip.and_then(|trip| {
+        Some(Trip {
+            id: trip.trip_id,
+            route_id: trip.route_id?,
+            service_id: trip.service_id?,
+            headsign: trip.trip_headsign,
+            short_name: trip.trip_short_name,
+            direction_id: trip.direction_id.and_then(|d| d.try_into().ok()),
+            block_id: trip.block_id,
+            shape_id: trip.shape_id,
+            wheelchair_boarding: trip
+                .wheelchair_boarding
+                .and_then(|d| d.try_into().ok())
+                .unwrap_or_default(),
+            bikes_allowed: trip
+                .bikes_allowed
+                .and_then(|d| d.try_into().ok())
+                .unwrap_or_default(),
+            stop_ids: vec![],
+        })
+    });
+
+    JsonOrAccept(Versioned::new(1, trip), headers).into_response()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TripStopTime {
     pub stop_id: String,
-    pub stop_sequence: u32,
+    pub stop_sequence: u64,
     pub stop_name: String,
     pub arrival_time: Option<i64>,
 }
@@ -284,16 +498,18 @@ pub struct TripStopTime {
 #[serde(rename_all = "camelCase")]
 pub struct TripInfo {
     pub stop_ids: Vec<String>,
-    pub route: Vec<(f32, f32)>,
+    pub route: Vec<(f64, f64)>,
     pub stop_times: Vec<TripStopTime>,
 }
 
 #[allow(clippy::too_many_lines)]
 pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> impl IntoResponse {
     let trip = {
-        let t = Database::query_one::<Trip>(
-            "SELECT * FROM gtfs_trips WHERE trip_id = ?",
-            libsql::params![trip_id.clone()],
+        let trip_id = trip_id.clone();
+        let t = Database::logged(
+            "get_trip_info_shape_id",
+            sqlx::query!("SELECT shape_id FROM gtfs_trips WHERE trip_id = ?", trip_id)
+                .fetch_optional(&Database::pool()),
         )
         .await;
 
@@ -309,12 +525,19 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
 
     let shape_id = trip.shape_id.as_ref();
 
+    let pool = Database::pool();
+
     let (shapes, stop_ids, scheduled, live) = tokio::join!(
         async {
             if let Some(shape_id) = shape_id {
-                Database::query::<Shape>(
-                    "SELECT * FROM gtfs_shapes WHERE shape_id = ? order by shape_pt_sequence",
-                    libsql::params![shape_id.clone()],
+                let shape_id = shape_id.clone();
+                Database::logged(
+                    "get_trip_info_shapes",
+                    sqlx::query!(
+                        "SELECT * FROM gtfs_shapes WHERE shape_id = ? order by shape_pt_sequence",
+                        shape_id
+                    )
+                    .fetch_all(&pool),
                 )
                 .await
             } else {
@@ -322,42 +545,74 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
             }
         },
         async {
-            #[derive(Debug, Serialize, Deserialize)]
-            struct StopId {
-                #[serde(alias = "stop_id")]
-                id: String,
-                latitude: f32,
-                longitude: f32,
-            }
-
-            Database::query::<StopId>(
-                "
-                SELECT DISTINCT
-                    st.stop_id
-                    , s.latitude
-                    , s.longitude
-                FROM gtfs_stop_times st
-                LEFT JOIN gtfs_stops s on s.stop_id = st.stop_id
-                WHERE
-                    trip_id = ?
-                GROUP BY st.stop_id
-                ORDER BY st.stop_sequence
-                ",
-                libsql::params![trip_id.clone()],
+            let trip_id = trip_id.clone();
+            Database::logged(
+                "get_trip_info_stop_ids",
+                sqlx::query!(
+                    "
+                    SELECT DISTINCT
+                        st.stop_id
+                        , s.latitude
+                        , s.longitude
+                    FROM gtfs_stop_times st
+                    LEFT JOIN gtfs_stops s on s.stop_id = st.stop_id
+                    WHERE
+                        trip_id = ?
+                    GROUP BY st.stop_id
+                    ORDER BY st.stop_sequence
+                    ",
+                    trip_id
+                )
+                .fetch_all(&pool),
             )
             .await
         },
-        Database::query::<ScheduledStopTimeWithNames>(
-            "SELECT st.stop_id, st.stop_sequence, st.arrival_time, st.arrival_time_seconds, \
-             s.stop_name FROM gtfs_stop_times st LEFT JOIN gtfs_stops s ON s.stop_id = st.stop_id \
-             WHERE st.trip_id = ? ORDER BY st.stop_sequence",
-            libsql::params![trip_id.clone()],
-        ),
-        Database::query::<LiveStopTime>(
-            "SELECT stop_sequence, arrival_time, arrival_delay FROM live_trip_stop_times WHERE \
-             trip_id = ?",
-            libsql::params![trip_id.clone()],
-        ),
+        {
+            let trip_id = trip_id.clone();
+            let pool = pool.clone();
+
+            async move {
+                Database::logged(
+                    "get_trip_info_scheduled",
+                    sqlx::query!(
+                        r"SELECT
+                    st.stop_id,
+                    st.stop_sequence,
+                    st.arrival_time,
+                    st.arrival_time_seconds,
+                    s.stop_name
+                FROM gtfs_stop_times st
+                LEFT JOIN gtfs_stops s ON s.stop_id = st.stop_id
+                WHERE st.trip_id = ?
+                ORDER BY st.stop_sequence",
+                        trip_id
+                    )
+                    .fetch_all(&pool),
+                )
+                .await
+            }
+        },
+        {
+            let trip_id = trip_id.clone();
+            let pool = pool.clone();
+
+            async move {
+                Database::logged(
+                    "get_trip_info_live",
+                    sqlx::query!(
+                        "SELECT
+                          stop_sequence
+                        , arrival_time
+                        , arrival_delay
+                    FROM live_trip_stop_times
+                    WHERE trip_id = ?",
+                        trip_id
+                    )
+                    .fetch_all(&pool),
+                )
+                .await
+            }
+        },
     );
 
     let stop_ids = match stop_ids {
@@ -380,12 +635,26 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
         if shapes.is_empty() {
             stop_ids
                 .iter()
-                .map(|x| (x.longitude, x.latitude))
+                .filter_map(|x| {
+                    Some(
+                        Coord {
+                            latitude: x.latitude?,
+                            longitude: x.longitude?,
+                        }
+                        .as_tuple(),
+                    )
+                })
                 .collect::<Vec<_>>()
         } else {
             shapes
                 .iter()
-                .map(|x| (x.longitude, x.latitude))
+                .map(|x| {
+                    Coord {
+                        latitude: x.shape_pt_lat,
+                        longitude: x.shape_pt_lon,
+                    }
+                    .as_tuple()
+                })
                 .collect::<Vec<_>>()
         }
     };
@@ -417,17 +686,19 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
                         .iter()
                         .find(|s| s.stop_sequence == l.stop_sequence)
                         .and_then(|s| s.arrival_time_seconds)?;
-                    let delay = i64::from(l.arrival_delay.unwrap_or(0));
+                    let delay = l.arrival_delay.unwrap_or(0);
                     let computed = time - delay - offset;
                     (computed.abs_diff(now) < 86400 * 2).then_some(computed)
                 })
                 .unwrap_or(global)
         };
 
-        let live_by_seq: HashMap<u32, &LiveStopTime> =
-            live.iter().map(|l| (l.stop_sequence, l)).collect();
+        let live_by_seq = live
+            .iter()
+            .map(|l| (l.stop_sequence, l))
+            .collect::<HashMap<_, _>>();
 
-        let mut delay_map: BTreeMap<u32, i32> = BTreeMap::new();
+        let mut delay_map = BTreeMap::new();
         for l in &live {
             if let Some(delay) = l.arrival_delay {
                 delay_map.insert(l.stop_sequence, delay);
@@ -438,8 +709,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
                     .and_then(|s| s.arrival_time_seconds)
             }) {
                 let sched_unix = base_midnight + offset;
-                #[allow(clippy::cast_possible_truncation)]
-                let computed_delay = (time - sched_unix) as i32;
+                let computed_delay = time - sched_unix;
                 delay_map.insert(l.stop_sequence, computed_delay);
             }
         }
@@ -463,21 +733,22 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
                     } else if let (Some(delay), Some(offset)) =
                         (live_stu.arrival_delay, s.arrival_time_seconds)
                     {
-                        Some(base_midnight + offset + i64::from(delay))
+                        Some(base_midnight + offset + delay)
                     } else {
                         None
                     }
                 } else if let (Some(offset), Some(delay)) =
                     (s.arrival_time_seconds, propagated_delay)
                 {
-                    Some(base_midnight + offset + i64::from(delay))
+                    Some(base_midnight + offset + delay)
                 } else {
                     None
                 };
 
                 TripStopTime {
                     stop_id: s.stop_id.clone(),
-                    stop_sequence: s.stop_sequence,
+                    #[allow(clippy::cast_sign_loss)]
+                    stop_sequence: s.stop_sequence as u64,
                     stop_name: s.stop_name.unwrap_or_default(),
                     arrival_time: predicted_arrival,
                 }
@@ -525,7 +796,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
         Versioned::new(
             1,
             TripInfo {
-                stop_ids: stop_ids.iter().map(|x| x.id.clone()).collect(),
+                stop_ids: stop_ids.iter().map(|x| x.stop_id.clone()).collect(),
                 route,
                 stop_times,
             },
@@ -535,21 +806,14 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
     .into_response()
 }
 
-#[derive(Debug, Deserialize)]
-struct ScheduledStopTimeWithNames {
-    stop_id: String,
-    stop_sequence: u32,
-    #[allow(dead_code)]
-    arrival_time: Option<String>,
-    arrival_time_seconds: Option<i64>,
-    stop_name: Option<String>,
+struct Coord {
+    latitude: f64,
+    longitude: f64,
 }
-
-#[derive(Debug, Deserialize)]
-struct LiveStopTime {
-    stop_sequence: u32,
-    arrival_time: Option<i64>,
-    arrival_delay: Option<i32>,
+impl Coord {
+    pub const fn as_tuple(&self) -> (f64, f64) {
+        (self.longitude, self.latitude)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -562,37 +826,42 @@ struct StopArrivalTime {
     arrival_time: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
-struct BaseMidnightRow {
-    base_midnight: i64,
-}
-
-#[derive(Debug, Deserialize)]
-struct StopTripRow {
-    vehicle_id: String,
-    trip_id: String,
-    route_id: String,
-    stop_id: String,
-    stop_sequence: u32,
-    next_stop_sequence: Option<u32>,
-    live_arrival_time: Option<i64>,
-    live_arrival_delay: Option<i32>,
-    arrival_time_seconds: Option<i64>,
-    effective_delay: Option<i32>,
-}
-
 pub async fn get_shapes(headers: HeaderMap) -> impl IntoResponse {
-    let shapes = Database::query::<Shape>("SELECT * FROM gtfs_shapes", libsql::params![])
-        .await
-        .unwrap_or_default();
+    let shapes = Database::logged(
+        "get_shapes",
+        sqlx::query_as!(
+            Shape,
+            r#"SELECT
+                shape_id as "id",
+                shape_pt_lat as "latitude",
+                shape_pt_lon as "longitude",
+                shape_pt_sequence as "sequence: u32",
+                shape_dist_traveled as "distance"
+            FROM gtfs_shapes"#
+        )
+        .fetch_all(&Database::pool()),
+    )
+    .await
+    .unwrap_or_default();
 
     JsonOrAccept(Versioned::new(1, shapes), headers).into_response()
 }
 
 pub async fn get_shape(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
-    let shape = Database::query_one::<Shape>(
-        "SELECT * FROM gtfs_shapes WHERE shape_id = ?",
-        libsql::params![id.clone()],
+    let shape = Database::logged(
+        "get_shape",
+        sqlx::query_as!(
+            Shape,
+            r#"SELECT
+                shape_id as "id",
+                shape_pt_lat as "latitude",
+                shape_pt_lon as "longitude",
+                shape_pt_sequence as "sequence: u32",
+                shape_dist_traveled as "distance"
+            FROM gtfs_shapes WHERE shape_id = ?"#,
+            id
+        )
+        .fetch_optional(&Database::pool()),
     )
     .await;
 
@@ -600,16 +869,17 @@ pub async fn get_shape(headers: HeaderMap, Path(id): Path<String>) -> impl IntoR
         Ok(Some(shape)) => JsonOrAccept(Versioned::new(1, shape), headers).into_response(),
         Ok(None) => (StatusCode::NOT_FOUND, "Shape not found").into_response(),
         Err(e) => {
-            error!(%e, ?id, "Failed to get shape");
+            error!(%e, "Failed to get shape");
             (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get shape").into_response()
         }
     }
 }
 
 pub async fn get_shape_for_trip(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
-    let trip = Database::query_one::<Trip>(
-        "SELECT * FROM gtfs_trips WHERE trip_id = ?",
-        libsql::params![id.clone()],
+    let trip = Database::logged(
+        "get_shape_for_trip_trip",
+        sqlx::query!("SELECT shape_id FROM gtfs_trips WHERE trip_id = ?", id)
+            .fetch_optional(&Database::pool()),
     )
     .await;
 
@@ -622,20 +892,30 @@ pub async fn get_shape_for_trip(headers: HeaderMap, Path(id): Path<String>) -> i
         }
     };
 
-    let Some(shape_id) = trip.shape_id.as_ref() else {
+    let Some(shape_id) = trip.shape_id else {
         return (StatusCode::NOT_FOUND, "Trip has no shape").into_response();
     };
 
-    let shapes = Database::query::<SimpleShape>(
-        "SELECT * FROM gtfs_shapes WHERE shape_id = ?",
-        libsql::params![shape_id.clone()],
+    let shapes = Database::logged(
+        "get_shape_for_trip_points",
+        sqlx::query!(
+            "
+            SELECT
+                shape_pt_lat
+                , shape_pt_lon
+            FROM gtfs_shapes
+            WHERE shape_id = ?
+            ",
+            shape_id
+        )
+        .fetch_all(&Database::pool()),
     )
     .await;
 
     let shapes = match shapes {
         Ok(shapes) => shapes,
         Err(e) => {
-            error!(%e, ?shape_id, "Failed to get shape");
+            error!(%e, "Failed to get shape");
             return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get shape").into_response();
         }
     };
@@ -643,7 +923,10 @@ pub async fn get_shape_for_trip(headers: HeaderMap, Path(id): Path<String>) -> i
     JsonOrAccept(
         Versioned::new(
             1,
-            shapes.iter().map(SimpleShape::to_tuple).collect::<Vec<_>>(),
+            shapes
+                .iter()
+                .map(|x| (x.shape_pt_lon, x.shape_pt_lat))
+                .collect::<Vec<_>>(),
         ),
         headers,
     )

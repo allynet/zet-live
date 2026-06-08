@@ -8,7 +8,7 @@ use tokio::sync::{Notify, RwLock};
 use tracing::{debug, trace, warn};
 
 use super::data::transit_realtime::FeedMessage;
-use crate::cli::Config;
+use crate::{cli::Config, http_client::HTTP_CLIENT};
 
 static FEED: LazyLock<RwLock<Option<Arc<FeedMessage>>>> = LazyLock::new(|| RwLock::new(None));
 static FEED_NOTIFICATION: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
@@ -23,7 +23,7 @@ pub async fn fetch_feed() -> Result<FeedMessage, FetcherError> {
     debug!(url = ?url.as_str(), "Fetching feed");
 
     let start = Instant::now();
-    let response = crate::http_client::HTTP_CLIENT
+    let response = HTTP_CLIENT
         .get(url)
         .timeout(Duration::from_secs(10))
         .send()

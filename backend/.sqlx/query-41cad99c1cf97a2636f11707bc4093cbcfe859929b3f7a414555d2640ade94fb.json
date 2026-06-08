@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM live_trips",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "41cad99c1cf97a2636f11707bc4093cbcfe859929b3f7a414555d2640ade94fb"
+}

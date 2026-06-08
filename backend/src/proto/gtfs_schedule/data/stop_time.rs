@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{DropOffType, FileData, PickupType};
-use crate::proto::gtfs_schedule::data::QueryData;
+use crate::proto::gtfs_schedule::data::BulkInsert;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,39 +35,7 @@ impl FileData for StopTime {
         "gtfs_stop_times"
     }
 
-    fn into_insert_query(self) -> QueryData {
-        let query = "
-        insert into
-            gtfs_stop_times
-                ( trip_id
-                , stop_id
-                , stop_sequence
-                , arrival_time
-                , departure_time
-                )
-            values
-                ( :trip_id
-                , :stop_id
-                , :stop_sequence
-                , :arrival_time
-                , :departure_time
-                )
-        ";
-
-        let params = libsql::named_params! {
-            ":trip_id": self.trip_id.clone(),
-            ":stop_id": self.stop_id.clone(),
-            ":stop_sequence": self.stop_sequence,
-            ":arrival_time": self.arrival_time,
-            ":departure_time": self.departure_time,
-        }
-        .into_iter()
-        .map(|(x, y)| (x.to_string(), y))
-        .collect::<Vec<_>>();
-
-        QueryData {
-            query: query.to_string(),
-            params,
-        }
+    fn into_bulk_insert(self) -> BulkInsert {
+        BulkInsert::StopTime(self)
     }
 }

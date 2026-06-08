@@ -15,12 +15,12 @@ use crate::{
     },
 };
 
-pub async fn run(server_config: &ServerConfig) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run(server_config: &ServerConfig) -> anyhow::Result<()> {
     debug!("Starting server");
 
     if let Err(e) = Database::init(&server_config.database_url).await {
         error!(%e, "Failed to initialize database");
-        return Err(format!("Failed to initialize database: {e}").into());
+        return Err(anyhow::anyhow!(e).context("Failed to initialize database"));
     }
 
     spawn_feed_fetcher();
@@ -61,9 +61,7 @@ pub async fn run(server_config: &ServerConfig) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-async fn create_listener(
-    server_config: &ServerConfig,
-) -> Result<TcpListener, Box<dyn std::error::Error>> {
+async fn create_listener(server_config: &ServerConfig) -> anyhow::Result<TcpListener> {
     let mut listenfd = ListenFd::from_env();
     if let Ok(Some(listener)) = listenfd.take_tcp_listener(0) {
         debug!("Using socket from listenfd");
@@ -74,7 +72,7 @@ async fn create_listener(
         Ok(x) => x,
         Err(e) => {
             error!(?e, "Failed to parse server address");
-            return Err(format!("Failed to parse server address: {e}").into());
+            return Err(anyhow::anyhow!(e).context("Failed to parse server address"));
         }
     };
 
@@ -82,8 +80,7 @@ async fn create_listener(
         Ok(x) => Ok(x),
         Err(e) => {
             error!(?e, "Failed to bind to address");
-
-            Err(format!("Failed to bind to address {address:?}: {e}").into())
+            Err(anyhow::anyhow!(e).context(format!("Failed to bind to address {address:?}")))
         }
     }
 }

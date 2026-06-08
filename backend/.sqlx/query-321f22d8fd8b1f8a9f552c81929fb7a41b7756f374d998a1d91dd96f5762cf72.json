@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                  stop_id\n                , stop_name\n                , latitude\n                , longitude\n            FROM gtfs_stops\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "stop_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "stop_id"
+          }
+        }
+      },
+      {
+        "name": "stop_name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "stop_name"
+          }
+        }
+      },
+      {
+        "name": "latitude",
+        "ordinal": 2,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "latitude"
+          }
+        }
+      },
+      {
+        "name": "longitude",
+        "ordinal": 3,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stops",
+            "name": "longitude"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "321f22d8fd8b1f8a9f552c81929fb7a41b7756f374d998a1d91dd96f5762cf72"
+}

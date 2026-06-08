@@ -1,24 +1,21 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::Write,
     sync::{Arc, LazyLock},
     time::Instant,
 };
 
 use _entity::vehicle::Vehicle;
 use axum::{Router, routing::get};
+use sqlx::AssertSqlSafe;
 use tokio::sync::{RwLock, watch};
 use tracing::{error, trace, warn};
 
 use crate::{
     database::Database,
     entity::util::{mixed_value::MixedValue, versioned::Versioned},
-    proto::{
-        gtfs_realtime::{
-            data::transit_realtime::FeedMessage,
-            fetcher::{get_cached_feed, wait_for_feed_update},
-        },
-        gtfs_schedule,
+    proto::gtfs_realtime::{
+        data::transit_realtime::FeedMessage,
+        fetcher::{get_cached_feed, wait_for_feed_update},
     },
 };
 
@@ -107,48 +104,61 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
 
             trace!(current_feed_trips = ?current_feed_trip_ids.len(), "Updating active trips");
             let stmts_start = Instant::now();
-            let stmts = {
-                let mut stmts = String::new();
 
-                stmts.push_str("delete from live_trips;\n");
+            {
+                let tx = Database::pool().begin().await;
+                let mut tx = match tx {
+                    Ok(tx) => tx,
+                    Err(e) => {
+                        error!(?e, "Failed to begin transaction for active trips");
+                        return;
+                    }
+                };
+
+                if let Err(e) = Database::logged(
+                    "delete_live_trips",
+                    sqlx::query!("DELETE FROM live_trips").execute(&mut *tx),
+                )
+                .await
+                {
+                    error!(?e, "Failed to delete live trips");
+                    return;
+                }
+
                 for trip_id in &current_feed_trip_ids {
-                    let res = writeln!(
-                        stmts,
-                        "insert into live_trips (trip_id) values ('{}');",
-                        trip_id.replace('\'', "''")
-                    );
-
-                    if let Err(e) = res {
-                        error!(?e, "Failed to write to stmts");
+                    if let Err(e) = Database::logged(
+                        "insert_live_trip",
+                        sqlx::query!("INSERT INTO live_trips (trip_id) VALUES (?)", trip_id)
+                            .execute(&mut *tx),
+                    )
+                    .await
+                    {
+                        error!(?e, "Failed to insert live trip");
                         return;
                     }
                 }
 
-                stmts
-            };
-
-            trace!(took = ?stmts_start.elapsed(), "Built batch statements for active trips");
-
-            if let Err(e) = Database::conn()
-                .write()
-                .await
-                .execute_transactional_batch(&stmts)
-                .await
-            {
-                error!(?e, "Failed to execute batch statements for active trips");
-                return;
+                if let Err(e) = tx.commit().await {
+                    error!(?e, "Failed to commit live trips");
+                    return;
+                }
             }
 
+            Database::optimize().await;
+
             {
-                let stops = Database::query::<gtfs_schedule::data::SimpleStop>(
-                    "
+                let stops = Database::logged(
+                    "active_stops_simple",
+                    sqlx::query!(
+                        "
                         SELECT DISTINCT
                             s.stop_id, s.stop_name, s.longitude, s.latitude
                         FROM live_trips lt
                         INNER JOIN gtfs_stop_times st on st.trip_id = lt.trip_id
                         INNER JOIN gtfs_stops s on s.stop_id = st.stop_id
                         ",
-                    libsql::params![],
+                    )
+                    .fetch_all(&Database::pool()),
                 )
                 .await;
 
@@ -156,7 +166,14 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     Ok(stops) => {
                         let stops = stops
                             .into_iter()
-                            .map(gtfs_schedule::data::stop::SimpleStop::into_vec)
+                            .filter_map(|x| {
+                                Some(vec![
+                                    x.stop_id.into(),
+                                    x.stop_name?.into(),
+                                    x.latitude?.into(),
+                                    x.longitude?.into(),
+                                ])
+                            })
                             .collect::<Vec<_>>();
 
                         if !stops.is_empty() {
@@ -171,28 +188,29 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
 
             trace!(took = ?stmts_start.elapsed(), "Updated active trips");
 
-            let active_stop_ids = Database::query_first_columns(
-                "
-                SELECT
-                    DISTINCT stop_id
-                FROM live_trips lt
-                LEFT JOIN gtfs_stop_times gst
-                    ON lt.trip_id = gst.trip_id
-                ",
-                libsql::params![],
-            )
-            .await;
-            let active_stop_ids = match active_stop_ids {
-                Ok(rows) => rows,
-                Err(e) => {
-                    error!(?e, "Error getting active stops");
-                    return;
+            let active_stop_ids: Vec<String> = {
+                let rows = Database::logged(
+                    "active_stop_ids",
+                    sqlx::query_scalar!(
+                        "
+                        SELECT DISTINCT
+                            stop_id
+                        FROM live_trips lt
+                        LEFT JOIN gtfs_stop_times gst ON lt.trip_id = gst.trip_id
+                        "
+                    )
+                    .fetch_all(&Database::pool()),
+                )
+                .await;
+
+                match rows {
+                    Ok(rows) => rows.into_iter().flatten().collect(),
+                    Err(e) => {
+                        error!(?e, "Error getting active stops");
+                        return;
+                    }
                 }
             };
-            let active_stop_ids = active_stop_ids
-                .into_iter()
-                .filter_map(|x| x.as_text().cloned())
-                .collect::<Vec<_>>();
 
             trace!(
                 took = ?start.elapsed(),
@@ -228,25 +246,25 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
     tokio::task::spawn(async move {
         struct NextStopInfo {
             stop_id: String,
-            stop_sequence: u32,
-            arrival_delay: Option<i32>,
+            stop_sequence: u64,
+            arrival_delay: Option<i64>,
             arrival_time: Option<i64>,
         }
 
         struct LiveStopTimeInfo {
             stop_id: String,
-            stop_sequence: u32,
+            stop_sequence: u64,
             arrival_time: Option<i64>,
-            arrival_delay: Option<i32>,
+            arrival_delay: Option<i64>,
         }
 
-        #[derive(serde::Deserialize)]
+        #[derive(sqlx::FromRow)]
         struct RouteLongNameRow {
             route_id: String,
             route_long_name: Option<String>,
         }
 
-        #[derive(serde::Deserialize)]
+        #[derive(sqlx::FromRow)]
         struct TripHeadsignRow {
             trip_id: String,
             trip_headsign: Option<String>,
@@ -302,8 +320,11 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
 
                 let next_stop = NextStopInfo {
                     stop_id: first_stu.stop_id().to_string(),
-                    stop_sequence: first_stop_sequence,
-                    arrival_delay: first_stu.arrival.as_ref().and_then(|a| a.delay),
+                    stop_sequence: u64::from(first_stop_sequence),
+                    arrival_delay: first_stu
+                        .arrival
+                        .as_ref()
+                        .and_then(|a| a.delay.map(Into::into)),
                     arrival_time: first_stu.arrival.as_ref().and_then(|a| a.time),
                 };
 
@@ -311,12 +332,15 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                     .stop_time_update
                     .iter()
                     .filter_map(|stu| {
-                        let stop_sequence = stu.stop_sequence?;
+                        let stop_sequence = stu.stop_sequence?.into();
                         Some(LiveStopTimeInfo {
                             stop_id: stu.stop_id().to_string(),
                             stop_sequence,
                             arrival_time: stu.arrival.as_ref().and_then(|a| a.time),
-                            arrival_delay: stu.arrival.as_ref().and_then(|a| a.delay),
+                            arrival_delay: stu
+                                .arrival
+                                .as_ref()
+                                .and_then(|a| a.delay.map(Into::into)),
                         })
                     })
                     .collect::<Vec<_>>();
@@ -352,17 +376,23 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             if route_ids.is_empty() {
                 HashMap::new()
             } else {
-                let placeholders = route_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
                 let query = format!(
-                    "SELECT route_id, NULLIF(route_long_name, '') AS route_long_name FROM \
-                     gtfs_routes WHERE route_id IN ({placeholders})"
+                    "
+                    SELECT
+                          route_id
+                        , NULLIF(route_long_name, '') AS route_long_name
+                    FROM gtfs_routes
+                    WHERE route_id IN ({})
+                    ",
+                    route_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", "),
                 );
-                let rows = Database::query::<RouteLongNameRow>(
-                    &query,
-                    libsql::params_from_iter(route_ids.iter().map(String::as_str)),
-                )
-                .await
-                .unwrap_or_default();
+                let mut q = sqlx::query_as::<_, RouteLongNameRow>(AssertSqlSafe(query));
+                for id in &route_ids {
+                    q = q.bind(id);
+                }
+                let rows = Database::logged("route_long_names", q.fetch_all(&Database::pool()))
+                    .await
+                    .unwrap_or_default();
 
                 rows.into_iter()
                     .filter_map(|row| row.route_long_name.map(|name| (row.route_id, name)))
@@ -373,17 +403,19 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
         trace!(current_vehicles = ?vehicles.len(), "Updating vehicles");
 
         let previous_positions = {
-            #[derive(serde::Deserialize)]
-            struct PrevPosition {
-                vehicle_id: String,
-                latitude: f32,
-                longitude: f32,
-                bearing: Option<f32>,
-            }
-
-            let rows = Database::query::<PrevPosition>(
-                "SELECT vehicle_id, latitude, longitude, bearing FROM live_vehicles",
-                libsql::params![],
+            let rows = Database::logged(
+                "previous_positions",
+                sqlx::query!(
+                    "
+                    SELECT
+                          vehicle_id
+                        , latitude
+                        , longitude
+                        , bearing
+                    FROM live_vehicles
+                    ",
+                )
+                .fetch_all(&Database::pool()),
             )
             .await;
 
@@ -399,7 +431,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             }
         };
 
-        let trip_headsigns: HashMap<String, String> = {
+        let trip_headsigns = {
             let trip_ids = vehicles
                 .iter()
                 .map(|v| v.trip_id.clone())
@@ -410,17 +442,23 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             if trip_ids.is_empty() {
                 HashMap::new()
             } else {
-                let placeholders = trip_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
                 let query = format!(
-                    "SELECT trip_id, NULLIF(trip_headsign, '') AS trip_headsign FROM gtfs_trips \
-                     WHERE trip_id IN ({placeholders})"
+                    "
+                    SELECT
+                          trip_id
+                        , NULLIF(trip_headsign, '') AS trip_headsign
+                    FROM gtfs_trips
+                    WHERE trip_id IN ({})
+                    ",
+                    trip_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", "),
                 );
-                let rows = Database::query::<TripHeadsignRow>(
-                    &query,
-                    libsql::params_from_iter(trip_ids.iter().map(String::as_str)),
-                )
-                .await
-                .unwrap_or_default();
+                let mut q = sqlx::query_as::<_, TripHeadsignRow>(AssertSqlSafe(query));
+                for id in &trip_ids {
+                    q = q.bind(id);
+                }
+                let rows = Database::logged("trip_headsigns", q.fetch_all(&Database::pool()))
+                    .await
+                    .unwrap_or_default();
 
                 rows.into_iter()
                     .filter_map(|row| row.trip_headsign.map(|name| (row.trip_id, name)))
@@ -454,41 +492,34 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             .collect::<Vec<_>>();
 
         let stmts_start = Instant::now();
-        let stmts = {
-            let mut stmts = String::new();
 
-            stmts.push_str("delete from live_vehicles;\n");
-            stmts.push_str("delete from live_trip_stop_times;\n");
-
+        {
             let schedule_offsets = {
                 let trip_ids = all_stop_times.keys().cloned().collect::<Vec<_>>();
                 if trip_ids.is_empty() {
                     HashMap::new()
                 } else {
-                    let placeholders = trip_ids.iter().map(|_| "?").collect::<Vec<_>>();
                     let sql = format!(
-                        "SELECT trip_id, stop_sequence, arrival_time_seconds FROM gtfs_stop_times \
-                         WHERE trip_id IN ({}) AND arrival_time_seconds IS NOT NULL",
-                        placeholders.join(", ")
+                        "
+                        SELECT
+                              trip_id
+                            , stop_sequence
+                            , arrival_time_seconds
+                        FROM gtfs_stop_times
+                        WHERE   trip_id IN ({})
+                            AND arrival_time_seconds IS NOT NULL
+                        ",
+                        trip_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ")
                     );
                     let mut map = HashMap::new();
-                    let param_refs = trip_ids.iter().map(String::as_str).collect::<Vec<_>>();
-                    if let Ok(mut rows) = Database::conn()
-                        .read()
-                        .await
-                        .query(&sql, libsql::params_from_iter(param_refs))
-                        .await
+                    let mut q = sqlx::query_as::<_, (String, i64, i64)>(AssertSqlSafe(sql));
+                    for id in &trip_ids {
+                        q = q.bind(id);
+                    }
+                    if let Ok(rows) =
+                        Database::logged("schedule_offsets", q.fetch_all(&Database::pool())).await
                     {
-                        while let Ok(Some(row)) = rows.next().await {
-                            let Ok(trip_id) = row.get::<String>(0) else {
-                                continue;
-                            };
-                            let Ok(stop_sequence) = row.get::<u32>(1) else {
-                                continue;
-                            };
-                            let Ok(offset) = row.get::<i64>(2) else {
-                                continue;
-                            };
+                        for (trip_id, stop_sequence, offset) in rows {
                             map.insert((trip_id, stop_sequence), offset);
                         }
                     }
@@ -496,159 +527,189 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 }
             };
 
-            let base_midnight_sql =
-                compute_base_midnight_sql(all_stop_times.iter().flat_map(|(trip_id, stops)| {
+            let best_base =
+                compute_base_midnight(all_stop_times.iter().flat_map(|(trip_id, stops)| {
                     stops.iter().map(|s| {
                         let offset = schedule_offsets
-                            .get(&(trip_id.clone(), s.stop_sequence))
+                            .get(&(trip_id.clone(), {
+                                #[allow(clippy::cast_possible_wrap)]
+                                {
+                                    s.stop_sequence as i64
+                                }
+                            }))
                             .copied();
                         (s.arrival_time, s.arrival_delay, offset)
                     })
                 }));
 
+            let mut tx = match Database::pool().begin().await {
+                Ok(tx) => tx,
+                Err(e) => {
+                    error!(?e, "Failed to begin transaction for vehicles");
+                    return;
+                }
+            };
+
+            if let Err(e) = Database::logged(
+                "delete_live_vehicles",
+                sqlx::query!("DELETE FROM live_vehicles").execute(&mut *tx),
+            )
+            .await
+            {
+                error!(?e, "Failed to delete live vehicles");
+                return;
+            }
+
+            if let Err(e) = Database::logged(
+                "delete_live_trip_stop_times",
+                sqlx::query!("DELETE FROM live_trip_stop_times").execute(&mut *tx),
+            )
+            .await
+            {
+                error!(?e, "Failed to delete live trip stop times");
+                return;
+            }
+
             for vehicle in &vehicles {
-                let prev_lat_sql = vehicle
-                    .prev_latitude
-                    .map_or_else(|| "NULL".to_string(), |v| v.to_string());
-                let prev_lng_sql = vehicle
-                    .prev_longitude
-                    .map_or_else(|| "NULL".to_string(), |v| v.to_string());
-                let bearing_sql = vehicle
-                    .bearing
-                    .map_or_else(|| "NULL".to_string(), |v| v.to_string());
-                let next_stop_id_sql = vehicle.next_stop_id.as_deref().map_or_else(
-                    || "NULL".to_string(),
-                    |v| format!("'{}'", v.replace('\'', "''")),
-                );
-                let next_stop_seq_sql = vehicle
-                    .next_stop_sequence
-                    .map_or_else(|| "NULL".to_string(), |v| v.to_string());
-                let next_stop_delay_sql = vehicle
-                    .next_stop_arrival_delay
-                    .map_or_else(|| "NULL".to_string(), |v| v.to_string());
-                let next_stop_arrival_time_sql = vehicle
-                    .next_stop_arrival_time
-                    .map_or_else(|| "NULL".to_string(), |v| v.to_string());
-                let route_long_name_sql = vehicle.route_long_name.as_deref().map_or_else(
-                    || "NULL".to_string(),
-                    |v| format!("'{}'", v.replace('\'', "''")),
-                );
-                let trip_headsign_sql = vehicle.trip_headsign.as_deref().map_or_else(
-                    || "NULL".to_string(),
-                    |v| format!("'{}'", v.replace('\'', "''")),
+                let id = vehicle.id.as_str();
+                let route_id = vehicle.route_id.as_str();
+                let trip_id = vehicle.trip_id.as_str();
+                let route_long_name = vehicle.route_long_name.as_deref();
+                let trip_headsign = vehicle.trip_headsign.as_deref();
+                let latitude = vehicle.latitude;
+                let longitude = vehicle.longitude;
+                let prev_latitude = vehicle.prev_latitude;
+                let prev_longitude = vehicle.prev_longitude;
+                let bearing = vehicle.bearing;
+                let next_stop_id = vehicle.next_stop_id.as_deref();
+                let next_stop_sequence = vehicle.next_stop_sequence.map(|v| {
+                    #[allow(clippy::cast_possible_truncation)]
+                    {
+                        v as i32
+                    }
+                });
+                let next_stop_arrival_delay = vehicle.next_stop_arrival_delay;
+                let next_stop_arrival_time = vehicle.next_stop_arrival_time;
+
+                let q = sqlx::query!(
+                    "
+                    INSERT INTO
+                    live_vehicles
+                        ( vehicle_id
+                        , route_id
+                        , trip_id
+                        , route_long_name
+                        , trip_headsign
+                        , latitude
+                        , longitude
+                        , prev_latitude
+                        , prev_longitude
+                        , bearing
+                        , next_stop_id
+                        , next_stop_sequence
+                        , next_stop_arrival_delay
+                        , next_stop_arrival_time
+                        )
+                    VALUES
+                        ( ?
+                        , ?
+                        , ?
+                        , ?
+                        , ?
+                        , ?
+                        , ?
+                        , ?
+                        , ?
+                        , ?
+                        , ?
+                        , ?
+                        , ?
+                        , ?
+                        )
+                    ",
+                    id,
+                    route_id,
+                    trip_id,
+                    route_long_name,
+                    trip_headsign,
+                    latitude,
+                    longitude,
+                    prev_latitude,
+                    prev_longitude,
+                    bearing,
+                    next_stop_id,
+                    next_stop_sequence,
+                    next_stop_arrival_delay,
+                    next_stop_arrival_time,
                 );
 
-                let res = writeln!(
-                    stmts,
-                    "INSERT INTO live_vehicles
-                    ( vehicle_id
-                    , route_id
-                    , trip_id
-                    , route_long_name
-                    , trip_headsign
-                    , latitude
-                    , longitude
-                    , prev_latitude
-                    , prev_longitude
-                    , bearing
-                    , next_stop_id
-                    , next_stop_sequence
-                    , next_stop_arrival_delay
-                    , next_stop_arrival_time
-                    ) values
-                    ( '{}'
-                    , '{}'
-                    , '{}'
-                    , {}
-                    , {}
-                    , {}
-                    , {}
-                    , {}
-                    , {}
-                    , {}
-                    , {}
-                    , {}
-                    , {}
-                    , {}
-                    );",
-                    vehicle.id.replace('\'', "''"),
-                    vehicle.route_id.replace('\'', "''"),
-                    vehicle.trip_id.replace('\'', "''"),
-                    route_long_name_sql,
-                    trip_headsign_sql,
-                    vehicle.latitude,
-                    vehicle.longitude,
-                    prev_lat_sql,
-                    prev_lng_sql,
-                    bearing_sql,
-                    next_stop_id_sql,
-                    next_stop_seq_sql,
-                    next_stop_delay_sql,
-                    next_stop_arrival_time_sql,
-                );
-
-                if let Err(e) = res {
-                    error!(?e, "Failed to write to stmts");
+                if let Err(e) = q.execute(&mut *tx).await {
+                    error!(?e, "Failed to insert live vehicle");
                     return;
                 }
             }
 
             for (trip_id, stop_times) in &all_stop_times {
                 for stu in stop_times {
-                    let arrival_time_sql = stu
-                        .arrival_time
-                        .map_or_else(|| "NULL".to_string(), |v| v.to_string());
-                    let arrival_delay_sql = stu
-                        .arrival_delay
-                        .map_or_else(|| "NULL".to_string(), |v| v.to_string());
+                    let stop_id: &str = stu.stop_id.as_str();
+                    #[allow(clippy::cast_possible_truncation)]
+                    let stop_sequence = stu.stop_sequence as i32;
 
-                    let res = writeln!(
-                        stmts,
-                        "INSERT INTO live_trip_stop_times
-                        ( trip_id
-                        , stop_id
-                        , stop_sequence
-                        , arrival_time
-                        , arrival_delay
-                        ) values
-                        ( '{}'
-                        , '{}'
-                        , {}
-                        , {}
-                        , {}
-                        );",
-                        trip_id.replace('\'', "''"),
-                        stu.stop_id.replace('\'', "''"),
-                        stu.stop_sequence,
-                        arrival_time_sql,
-                        arrival_delay_sql,
+                    let q = sqlx::query!(
+                        "
+                        INSERT INTO
+                        live_trip_stop_times
+                            ( trip_id
+                            , stop_id
+                            , stop_sequence
+                            , arrival_time
+                            , arrival_delay
+                            )
+                        VALUES
+                            ( ?
+                            , ?
+                            , ?
+                            , ?
+                            , ?
+                            )
+                        ",
+                        trip_id,
+                        stop_id,
+                        stop_sequence,
+                        stu.arrival_time,
+                        stu.arrival_delay,
                     );
 
-                    if let Err(e) = res {
-                        error!(?e, "Failed to write to stmts");
+                    if let Err(e) = q.execute(&mut *tx).await {
+                        error!(?e, "Failed to insert live trip stop time");
                         return;
                     }
                 }
             }
 
-            stmts.push_str(&base_midnight_sql);
-
-            stmts
-        };
-
-        trace!(took = ?stmts_start.elapsed(), "Built batch statements for vehicles");
-
-        if let Err(e) = Database::conn()
-            .write()
+            if let Err(e) = Database::logged(
+                "update_base_midnight",
+                sqlx::query!(
+                    "UPDATE live_feed_metadata SET base_midnight = ? WHERE id = 0",
+                    best_base
+                )
+                .execute(&mut *tx),
+            )
             .await
-            .execute_transactional_batch(&stmts)
-            .await
-        {
-            error!(?e, "Failed to execute batch statements for vehicles");
-            return;
+            {
+                error!(?e, "Failed to update base midnight");
+                return;
+            }
+
+            if let Err(e) = tx.commit().await {
+                error!(?e, "Failed to commit vehicles transaction");
+                return;
+            }
         }
 
         trace!(took = ?stmts_start.elapsed(), "Updated vehicles");
+
+        Database::optimize().await;
 
         let vehicles = tokio::task::spawn_blocking(move || {
             let simple_vehicles_feed = vehicles
@@ -725,7 +786,7 @@ pub enum Transmission {
     BroadcastToAll(Vec<u8>),
 }
 
-fn haversine_distance(lat1: f32, lng1: f32, lat2: f32, lng2: f32) -> f32 {
+fn haversine_distance(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
     let lat1_rad = lat1.to_radians();
     let lat2_rad = lat2.to_radians();
     let dlat = (lat2 - lat1).to_radians();
@@ -738,16 +799,16 @@ fn haversine_distance(lat1: f32, lng1: f32, lat2: f32, lng2: f32) -> f32 {
     6_371_000.0 * c
 }
 
-fn compute_base_midnight_sql(
-    stop_times: impl Iterator<Item = (Option<i64>, Option<i32>, Option<i64>)>,
-) -> String {
+fn compute_base_midnight(
+    stop_times: impl Iterator<Item = (Option<i64>, Option<i64>, Option<i64>)>,
+) -> i64 {
     let now = jiff::Timestamp::now().as_second();
 
-    let best_base = stop_times
+    stop_times
         .filter_map(|(arrival_time, arrival_delay, arrival_time_seconds)| {
             Some((
                 arrival_time?,
-                i64::from(arrival_delay.unwrap_or(0)),
+                arrival_delay.unwrap_or(0),
                 arrival_time_seconds?,
             ))
         })
@@ -763,7 +824,5 @@ fn compute_base_midnight_sql(
                 (best_base, best_diff)
             }
         })
-        .map_or(0, |(base, _)| base);
-
-    format!("UPDATE live_feed_metadata SET base_midnight = {best_base} WHERE id = 0;\n")
+        .map_or(0, |(base, _)| base)
 }

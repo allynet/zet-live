@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM live_vehicles",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "bc573b00983fb1f0342125a9def787ecec1f8180cc29f4a28b8619b6303df97e"
+}

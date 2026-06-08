@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                        SELECT DISTINCT\n                            stop_id\n                        FROM live_trips lt\n                        LEFT JOIN gtfs_stop_times gst ON lt.trip_id = gst.trip_id\n                        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "stop_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_stop_times",
+            "name": "stop_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "42b8f10b557983eb043fcd91b9ebce1b544e1a746e96585332ea7b1affdf17e9"
+}

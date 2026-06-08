@@ -20,6 +20,7 @@ pub const COMPONENT_LEVELS: &[(&str, Level)] = &[
     // Other
     ("app", Level::INFO),
     ("request", Level::INFO),
+    ("query", Level::ERROR),
     // External
 ];
 
@@ -79,7 +80,7 @@ where
         .expect("setting default subscriber failed");
 }
 
-pub fn update_log_level(log_level: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn update_log_level(log_level: &str) -> anyhow::Result<()> {
     let default_levels = COMPONENT_LEVELS
         .iter()
         .map(|(k, v)| {
@@ -115,5 +116,5 @@ pub fn update_log_level(log_level: &str) -> Result<(), Box<dyn std::error::Error
 
     reload_handle
         .modify(|filter| *filter = base_level)
-        .map_err(|e| format!("Failed to set log level: {:?}", e).into())
+        .map_err(|e| anyhow::anyhow!(e).context("Failed to set log level"))
 }

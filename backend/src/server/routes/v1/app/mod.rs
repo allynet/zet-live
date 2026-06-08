@@ -1,7 +1,6 @@
 use std::sync::LazyLock;
 
 use axum::Json;
-use sha2::Digest;
 
 use crate::config::project::ProjectConfig;
 
@@ -19,11 +18,7 @@ pub async fn get_version() -> Json<serde_json::Value> {
             })
             .map(|x| x.commit_id.clone());
 
-        let id = {
-            let mut hasher = sha2::Sha256::new();
-            hasher.update(ProjectConfig::app_and_build_date().as_bytes());
-            hex::encode(hasher.finalize())
-        };
+        let id = encode_hex(ProjectConfig::app_and_build_date().as_bytes());
 
         let mut ret = serde_json::json!({
             "name": ProjectConfig::app_name(),
@@ -45,4 +40,14 @@ pub async fn get_version() -> Json<serde_json::Value> {
     });
 
     Json(INFO.clone())
+}
+
+fn encode_hex(data: &[u8]) -> String {
+    const HEX_CHARS_LOWER: &[u8; 16] = b"0123456789abcdef";
+    let mut ret = String::with_capacity(data.len() * 2);
+    for &b in data {
+        ret.push(HEX_CHARS_LOWER[(b >> 4) as usize] as char);
+        ret.push(HEX_CHARS_LOWER[(b & 0x0F) as usize] as char);
+    }
+    ret
 }

@@ -21,11 +21,11 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn init() -> Result<Arc<Self>, Box<dyn std::error::Error>> {
+    pub fn init() -> anyhow::Result<Arc<Self>> {
         CLI_ARGS
             .set(Arc::new(Self::parse()))
             .map(|()| Self::global())
-            .map_err(|_| "Failed to initialize CLI args".into())
+            .map_err(|_| anyhow::anyhow!("Failed to initialize CLI args"))
     }
 
     pub fn global() -> Arc<Self> {
@@ -125,7 +125,7 @@ pub struct ServerConfig {
     #[clap(short = 'H', long, default_value = "0.0.0.0", env = "HOST")]
     pub host: String,
 
-    /// The libsql database URL to use.
+    /// The `SQLite` database URL to use.
     ///
     /// Should be a valid database URL, such as `sqlite:./db.sqlite`.
     #[clap(long, default_value = ":memory:", env = "DATABASE_URL", value_parser = DatabaseUrl::try_from_string)]
@@ -150,10 +150,6 @@ impl ServerConfig {
 pub enum DatabaseUrl {
     Memory,
     Local(PathBuf),
-    Remote {
-        url: url::Url,
-        token: Option<String>,
-    },
 }
 impl DatabaseUrl {
     fn try_from_string(s: &str) -> Result<Self, String> {
@@ -161,57 +157,15 @@ impl DatabaseUrl {
             return Ok(Self::Memory);
         }
 
-        match url::Url::parse(s) {
-            Ok(mut url) => {
-                match url.scheme() {
-                    "sqlite" | "sqlite3" | "file" => {
-                        return Ok(Self::Local(PathBuf::from(url.path())));
-                    }
-                    "http" | "https" | "libsql" | "ws" | "wss" => {}
-                    _ => {
-                        return Err("Invalid database URL scheme".into());
-                    }
+        url::Url::parse(s).map_or_else(
+            |_| Ok(Self::Local(PathBuf::from(s))),
+            |url| match url.scheme() {
+                "sqlite" | "sqlite3" | "file" => Ok(Self::Local(PathBuf::from(url.path()))),
+                _ => {
+                    Err("Invalid database URL scheme (expected sqlite:, sqlite3:, or file:)".into())
                 }
-
-                let query_params = url.query_pairs().collect::<Vec<_>>();
-
-                let token_pair = query_params
-                    .iter()
-                    .filter(|x| !x.1.is_empty())
-                    .find(|x| {
-                        matches!(
-                            x.0.to_lowercase().as_str(),
-                            "token"
-                                | "auth_token"
-                                | "authtoken"
-                                | "accesstoken"
-                                | "access_token"
-                                | "accesskey"
-                                | "access_key"
-                        )
-                    })
-                    .map(|x| (x.0.to_string(), x.1.to_string()));
-
-                if let Some((token_name, _)) = token_pair.as_ref() {
-                    let cleaned_pairs = query_params
-                        .iter()
-                        .filter(|x| &x.0 != token_name)
-                        .map(|(x, y)| (x.to_string(), y.to_string()))
-                        .collect::<Vec<_>>();
-
-                    url.query_pairs_mut().clear().extend_pairs(cleaned_pairs);
-                }
-
-                let token = if let Some((_, token)) = token_pair {
-                    Some(token)
-                } else {
-                    None
-                };
-
-                Ok(Self::Remote { url, token })
-            }
-            Err(_) => Ok(Self::Local(PathBuf::from(s))),
-        }
+            },
+        )
     }
 }
 impl std::fmt::Display for DatabaseUrl {
@@ -219,13 +173,6 @@ impl std::fmt::Display for DatabaseUrl {
         match self {
             Self::Memory => write!(f, ":memory:"),
             Self::Local(path) => write!(f, "file://{}", path.display()),
-            Self::Remote { url, token } => {
-                let mut url = url.clone();
-                if let Some(token) = token {
-                    url.query_pairs_mut().extend_pairs([("token", token)]);
-                }
-                write!(f, "{}", url)
-            }
         }
     }
 }

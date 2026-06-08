@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                    SELECT\n                          vehicle_id\n                        , latitude\n                        , longitude\n                        , bearing\n                    FROM live_vehicles\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "name": "vehicle_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "vehicle_id"
+          }
+        }
+      },
+      {
+        "name": "latitude",
+        "ordinal": 1,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "latitude"
+          }
+        }
+      },
+      {
+        "name": "longitude",
+        "ordinal": 2,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "longitude"
+          }
+        }
+      },
+      {
+        "name": "bearing",
+        "ordinal": 3,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "live_vehicles",
+            "name": "bearing"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "c933487841750e639258c40687f99ded1156398e0c9a6c23624560fe387694f4"
+}

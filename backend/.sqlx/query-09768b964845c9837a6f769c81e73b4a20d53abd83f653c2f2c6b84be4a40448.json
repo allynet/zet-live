@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT * FROM gtfs_shapes WHERE shape_id = ? order by shape_pt_sequence",
+  "describe": {
+    "columns": [
+      {
+        "name": "shape_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_id"
+          }
+        }
+      },
+      {
+        "name": "shape_pt_lat",
+        "ordinal": 1,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_pt_lat"
+          }
+        }
+      },
+      {
+        "name": "shape_pt_lon",
+        "ordinal": 2,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_pt_lon"
+          }
+        }
+      },
+      {
+        "name": "shape_pt_sequence",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_pt_sequence"
+          }
+        }
+      },
+      {
+        "name": "shape_dist_traveled",
+        "ordinal": 4,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "gtfs_shapes",
+            "name": "shape_dist_traveled"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "09768b964845c9837a6f769c81e73b4a20d53abd83f653c2f2c6b84be4a40448"
+}

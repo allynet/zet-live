@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT base_midnight FROM live_feed_metadata WHERE id = 0",
+  "describe": {
+    "columns": [
+      {
+        "name": "base_midnight",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "live_feed_metadata",
+            "name": "base_midnight"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8780ab41b0b7a1bca641ae428cd555596f3d5b5b110d482f766cb58bf83fbf70"
+}
