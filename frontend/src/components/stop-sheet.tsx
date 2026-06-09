@@ -41,37 +41,37 @@ export function StopSheet({ arrivals, onArrivalClick }: Props) {
     <div class="px-4 pb-3">
       <div class="space-y-1">
         {arrivals == null ? (
-          <span class="text-xs text-gray-400 italic">Loading arrivals...</span>
+          <span class="text-on-surface-faint text-xs italic">Loading arrivals...</span>
         ) : sortedGroups.length === 0 ? (
-          <span class="text-xs text-gray-400 italic">No active vehicles</span>
+          <span class="text-on-surface-faint text-xs italic">No active vehicles</span>
         ) : (
-          sortedGroups.map(([routeId, times]) => (
-            <div key={routeId} class="flex items-center gap-2">
-              <span
-                class="inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-xs font-bold text-white"
-                style={{
-                  backgroundColor: routeId.length > 2 ? "#2563eb" : "#dc2626",
-                }}
-              >
-                {routeId}
-              </span>
-              <div class="flex flex-wrap gap-1">
-                {times.map((t) =>
-                  t.arrivalTime != null ? (
-                    <span
-                      key={t.vehicleId}
-                      class="cursor-pointer rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-700 active:bg-gray-300"
-                      onClick={() => {
-                        onArrivalClick(t.vehicleId, t.tripId);
-                      }}
-                    >
-                      {formatMinutesFromNow(t.arrivalTime)}
-                    </span>
-                  ) : null,
-                )}
+          sortedGroups.map(([routeId, times]) => {
+            const isBus = routeId.length > 2;
+            return (
+              <div key={routeId} class="flex items-center gap-2">
+                <span
+                  class={`text-on-primary inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-xs font-bold ${isBus ? "bg-primary" : "bg-danger"}`}
+                >
+                  {routeId}
+                </span>
+                <div class="flex flex-wrap gap-1">
+                  {times.map((t) =>
+                    t.arrivalTime != null ? (
+                      <span
+                        key={t.vehicleId}
+                        class="bg-surface-dim text-on-surface-variant active:bg-surface-hover cursor-pointer rounded px-1.5 py-0.5 text-xs font-medium"
+                        onClick={() => {
+                          onArrivalClick(t.vehicleId, t.tripId);
+                        }}
+                      >
+                        {formatMinutesFromNow(t.arrivalTime)}
+                      </span>
+                    ) : null,
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

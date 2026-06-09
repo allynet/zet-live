@@ -12,13 +12,15 @@ const MIN_LOADING_TIME = 150;
 
 function CheckIcon({ done }: { done: boolean }) {
   if (!done) {
-    return <span class="inline-block h-4 w-4 shrink-0 rounded-full border-2 border-gray-400" />;
+    return (
+      <span class="border-on-surface-faint inline-block h-4 w-4 shrink-0 rounded-full border-2" />
+    );
   }
 
   return (
-    <span class="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-green-500">
+    <span class="bg-success inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full">
       <svg
-        class="h-3 w-3 text-white"
+        class="text-on-primary h-3 w-3"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -86,20 +88,22 @@ export function LoadingScreen() {
 
   return (
     <div
-      class="fixed inset-0 z-9999 flex items-center justify-center bg-white"
+      class="bg-surface fixed inset-0 z-9999 flex items-center justify-center"
       style={fading ? { transition: `opacity ${FADE_DURATION}ms ease-out`, opacity: 0 } : undefined}
     >
       <div class="flex flex-col items-center gap-6">
         <div class="flex flex-col items-center gap-2">
-          <h1 class="text-2xl font-bold text-gray-900">ZET Live</h1>
-          <div class="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
+          <h1 class="text-on-surface text-2xl font-bold">ZET Live</h1>
+          <div class="border-outline border-t-on-surface h-5 w-5 animate-spin rounded-full border-2" />
         </div>
 
         <ul class="flex flex-col gap-2">
           {steps.map((step) => (
-            <li key={step.label} class="flex items-center gap-2 text-sm text-gray-700">
+            <li key={step.label} class="text-on-surface-variant flex items-center gap-2 text-sm">
               <CheckIcon done={step.done} />
-              <span class={step.done ? "text-gray-400 line-through" : ""}>{step.label}</span>
+              <span class={step.done ? "text-on-surface-faint line-through" : ""}>
+                {step.label}
+              </span>
             </li>
           ))}
         </ul>

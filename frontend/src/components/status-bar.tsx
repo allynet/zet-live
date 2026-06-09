@@ -41,10 +41,10 @@ export function StatusBar() {
       onClick={() => {
         setExpanded((e) => !e);
       }}
-      class="flex cursor-pointer items-center gap-2 rounded-lg bg-white/80 px-2 py-1.5 text-xs text-gray-800 shadow-md backdrop-blur-sm select-none"
+      class="bg-surface-overlay text-on-surface flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs shadow-md backdrop-blur-sm select-none"
     >
       <span
-        class={`inline-block h-2 w-2 shrink-0 rounded-full ${wsConnected ? "bg-green-500" : "animate-pulse bg-red-500"}`}
+        class={`inline-block h-2 w-2 shrink-0 rounded-full ${wsConnected ? "bg-success" : "bg-danger animate-pulse"}`}
       />
       {expanded && (
         <div
@@ -55,12 +55,12 @@ export function StatusBar() {
           class="flex items-center gap-2"
         >
           <span>{wsConnected ? "Connected" : "Disconnected"}</span>
-          <span class="text-gray-400">|</span>
+          <span class="text-on-surface-muted">|</span>
           <span>Last update: {ago}</span>
           {lastError && (
             <>
-              <span class="text-gray-400">|</span>
-              <span class="text-red-600">{lastError}</span>
+              <span class="text-on-surface-muted">|</span>
+              <span class="text-on-danger-container">{lastError}</span>
             </>
           )}
         </div>

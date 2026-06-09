@@ -28,10 +28,11 @@ import {
   searchMatchedVehicleMapIdsSignal,
   searchMatchedStopIdsSignal,
 } from "@/state";
-import { settingSignal, type MapStyleId } from "@/settings";
+import { type MapStyleId } from "@/settings";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
 import { useSignalState } from "@/hooks/use-signal-state";
 import { useGeolocationPermission } from "@/hooks/use-geolocation-permission";
+import { resolvedMapStyleIdSignal } from "@/hooks/use-theme";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { calculateLatOffset } from "@/utils/map";
 import {
@@ -48,9 +49,6 @@ const styleMap = new Map<MapStyleId, StyleSpecification>([
   ["flat", mapStyleFlat as StyleSpecification],
   ["satellite", mapStyleSatellite as StyleSpecification],
 ]);
-
-const mapStyleIdSignal = settingSignal("mapStyle");
-const mapStyle = styleMap.get(mapStyleIdSignal.value) ?? (mapStyle3d as StyleSpecification);
 
 const emptyGeoJSON: FeatureCollection = {
   type: "FeatureCollection",
@@ -173,6 +171,8 @@ function useRafSetData(mapRef: { current: MapRef | null }, sourceId: string, dat
 export function MapContainer() {
   const mapRef = useRef<MapRef>(null);
   const [iconsReady, setIconsReady] = useState(false);
+  const resolvedMapStyleId = useSignalState(resolvedMapStyleIdSignal);
+  const mapStyle = styleMap.get(resolvedMapStyleId) ?? (mapStyle3d as StyleSpecification);
   const vehicles = useSignalState(vehiclesSignal);
   const followingVehicleId = useSignalState(followingVehicleIdSignal);
   const followingTripIds = useSignalState(followingTripIdsSignal);
@@ -409,6 +409,7 @@ export function MapContainer() {
   return (
     <div class="relative h-full w-full">
       <MapGL
+        key={resolvedMapStyleId}
         ref={mapRef}
         mapStyle={mapStyle}
         initialViewState={{

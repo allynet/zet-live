@@ -95,12 +95,12 @@ export function VehicleSheet({
               <li
                 key={`${stop.name}-${i}`}
                 data-is-next={isNext ? "true" : undefined}
-                class={`flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm transition-colors duration-300 hover:bg-gray-200 hover:transition-none ${
+                class={`hover:bg-surface-hover flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm transition-colors duration-300 hover:transition-none ${
                   isNext
-                    ? "bg-blue-100/80 font-bold text-blue-900"
+                    ? "bg-primary-container text-on-primary-container font-bold"
                     : isPassed
-                      ? "text-gray-400"
-                      : "text-gray-700"
+                      ? "text-on-surface-faint"
+                      : "text-on-surface-variant"
                 }`}
                 onClick={() => {
                   onStopClick(stop.ids);
@@ -108,11 +108,11 @@ export function VehicleSheet({
               >
                 <span class="flex shrink-0 items-center justify-center">
                   {isNext ? (
-                    <span class="inline-block h-2 w-2 rounded-full bg-blue-600" />
+                    <span class="bg-primary inline-block h-2 w-2 rounded-full" />
                   ) : isPassed ? (
-                    <span class="inline-block h-1 w-1 rounded-full bg-gray-300" />
+                    <span class="bg-on-surface-faint inline-block h-1 w-1 rounded-full" />
                   ) : (
-                    <span class="inline-block h-1.5 w-1.5 rounded-full bg-gray-400" />
+                    <span class="bg-on-surface-muted inline-block h-1.5 w-1.5 rounded-full" />
                   )}
                 </span>
                 <span class="min-w-0 truncate">{stop.name}</span>
@@ -121,7 +121,7 @@ export function VehicleSheet({
                     datetime={stopArrivalDate.toISOString()}
                     title={stopArrivalDate.toLocaleString()}
                     class={`ml-auto shrink-0 rounded px-1.5 py-0.5 text-xs font-bold ${
-                      isNext ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-600"
+                      isNext ? "bg-primary text-on-primary" : "bg-surface-dim text-on-surface-muted"
                     }`}
                   >
                     {badgeText}
@@ -132,18 +132,18 @@ export function VehicleSheet({
           })}
         </ul>
       </div>
-      <div class="flex shrink-0 items-center gap-2 border-t border-gray-200 px-4 py-2">
-        <label class="flex cursor-pointer items-center gap-2 text-xs font-semibold text-gray-600 select-none">
+      <div class="border-outline flex shrink-0 items-center gap-2 border-t px-4 py-2">
+        <label class="text-on-surface-muted flex cursor-pointer items-center gap-2 text-xs font-semibold select-none">
           Follow
           <button
             role="switch"
             aria-checked={followEnabled}
             type="button"
             onClick={onToggleFollow}
-            class={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${followEnabled ? "bg-blue-600" : "bg-gray-300"}`}
+            class={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${followEnabled ? "bg-primary" : "bg-on-surface-faint"}`}
           >
             <span
-              class={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${followEnabled ? "translate-x-4" : "translate-x-0"}`}
+              class={`bg-surface inline-block h-5 w-5 rounded-full shadow-sm transition-transform ${followEnabled ? "translate-x-4" : "translate-x-0"}`}
             />
           </button>
         </label>
@@ -168,7 +168,7 @@ export function VehicleSheet({
                 );
               }
             }}
-            class="flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-200"
+            class="bg-surface-dim text-on-surface-muted hover:bg-surface-hover flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -190,7 +190,7 @@ export function VehicleSheet({
           <button
             type="button"
             onClick={onLocate}
-            class="flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-200"
+            class="bg-surface-dim text-on-surface-muted hover:bg-surface-hover flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

@@ -60,13 +60,34 @@
     />
 
     <meta name="fediverse:creator" content="@Allypost@mastodon.social" />
+
+    <script>
+      (function(){
+        var d=matchMedia('(prefers-color-scheme:dark)').matches;
+        function ss(h){return(h>=20||h<6)}
+        var t='light',ms='3d';
+        try{
+          var r=JSON.parse(localStorage.getItem('settings')||'{}');
+          var mm=r.mapThemeMode||'manual';
+          if(mm==='manual')ms=r.mapStyle||'3d';
+          else if(mm==='time'){ms=ss(new Date().getHours())?'3d.dark':'3d'}
+          else ms=d?'3d.dark':'3d';
+          var m=r.uiThemeMode||'manual';
+          if(m==='manual')t=r.uiThemeManual||'light';
+          else if(m==='map')t=ms==='3d.dark'?'dark':'light';
+          else if(m==='time')t=ss(new Date().getHours())?'dark':'light';
+          else t=d?'dark':'light';
+        }catch(e){}
+        if(t==='dark')document.documentElement.classList.add('dark');
+      })();
+    </script>
   </head>
   <body>
     <div id="app">
-      <div id="loading-fallback" style="display:flex;align-items:center;justify-content:center;height:100%;font-family:sans-serif;background:#fff">
+      <div id="loading-fallback" style="display:flex;align-items:center;justify-content:center;height:100%;font-family:sans-serif">
         <div style="display:flex;flex-direction:column;align-items:center;gap:16px">
-          <h1 style="font-size:24px;font-weight:bold;margin:0">ZET Live</h1>
-          <div style="width:20px;height:20px;border:2px solid #d1d5db;border-top-color:#111827;border-radius:50%;animation:spin 1s linear infinite"></div>
+          <h1 id="loading-title" style="font-size:24px;font-weight:bold;margin:0">ZET Live</h1>
+          <div id="loading-spinner" style="width:20px;height:20px;border:2px solid #d1d5db;border-top-color:#111827;border-radius:50%;animation:spin 1s linear infinite"></div>
           <noscript>
             <p style="color:#6b7280;font-size:14px;margin:0">JavaScript is required to use ZET Live.</p>
           </noscript>

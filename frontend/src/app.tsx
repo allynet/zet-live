@@ -10,6 +10,7 @@ import { useWebSocket } from "@/hooks/use-websocket";
 import { useSignalState } from "@/hooks/use-signal-state";
 import { useUrlSync } from "@/hooks/use-url-sync";
 import { useVersionCheck } from "@/hooks/use-version-check";
+import { useTheme } from "@/hooks/use-theme";
 import {
   selectedStopSignal,
   selectedVehicleSignal,
@@ -31,6 +32,7 @@ export function App() {
   useWebSocket();
   useUrlSync();
   useVersionCheck();
+  useTheme();
 
   const wakeLockEnabled = useSignalState(wakeLockEnabledSignal);
   useWakeLock(wakeLockEnabled);
@@ -53,17 +55,15 @@ export function App() {
 
   if (selectedVehicle) {
     const routeTitle = selectedVehicle.getDisplayName();
+    const isBus = selectedVehicle.routeId.length > 2;
     sheetTitle = (
       <div class="flex items-center gap-2">
         <span
-          class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-bold text-white"
-          style={{
-            backgroundColor: selectedVehicle.routeId.length > 2 ? "#2563eb" : "#dc2626",
-          }}
+          class={`text-on-primary inline-flex items-center rounded px-1.5 py-0.5 text-xs font-bold ${isBus ? "bg-primary" : "bg-danger"}`}
         >
           {selectedVehicle.routeId}
         </span>
-        <span class="text-sm font-bold text-gray-900">{routeTitle}</span>
+        <span class="text-on-surface text-sm font-bold">{routeTitle}</span>
       </div>
     );
 
@@ -98,13 +98,15 @@ export function App() {
       );
 
       minimizedBody = (
-        <span class="text-xs text-gray-500">
+        <span class="text-on-surface-muted text-xs">
           Next stop{stopLabel} arriving {timeLabel}
         </span>
       );
     }
   } else if (selectedStop) {
-    sheetTitle = <span class="truncate text-sm font-bold text-gray-900">{selectedStop.name}</span>;
+    sheetTitle = (
+      <span class="text-on-surface truncate text-sm font-bold">{selectedStop.name}</span>
+    );
 
     const firstArrival = stopArrivalTimes?.find((a) => a.arrivalTime != null);
     if (firstArrival) {
@@ -112,7 +114,7 @@ export function App() {
       const minutes = Math.round(secondsUntil / 60);
       const label = minutes <= 0 ? "now" : minutes === 1 ? "1 min" : `${minutes} min`;
       minimizedBody = (
-        <span class="text-xs text-gray-500">
+        <span class="text-on-surface-muted text-xs">
           Route {firstArrival.routeId} in {label}
         </span>
       );

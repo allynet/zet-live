@@ -251,7 +251,7 @@ export function SearchBar() {
   return (
     <div
       ref={containerRef}
-      class="pointer-events-auto overflow-hidden rounded-xl bg-white/85 shadow-md backdrop-blur-sm"
+      class="bg-surface-overlay pointer-events-auto overflow-hidden rounded-xl shadow-md backdrop-blur-sm"
     >
       <div class="flex items-center gap-2 px-3 py-2">
         <svg
@@ -264,7 +264,7 @@ export function SearchBar() {
           stroke-width="2"
           stroke-linecap="round"
           stroke-linejoin="round"
-          class="shrink-0 text-gray-500"
+          class="text-on-surface-muted shrink-0"
         >
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.3-4.3" />
@@ -284,7 +284,7 @@ export function SearchBar() {
           }}
           onKeyDown={handleKeyDown}
           placeholder="Search stations or routes..."
-          class="min-w-0 flex-1 bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
+          class="text-on-surface placeholder:text-on-surface-faint min-w-0 flex-1 bg-transparent text-sm outline-none"
         />
         {hasQuery && (
           <button
@@ -296,7 +296,7 @@ export function SearchBar() {
             onClick={() => {
               setQuery("");
             }}
-            class="flex shrink-0 cursor-pointer items-center justify-center rounded p-0.5 text-gray-400 transition-colors hover:text-gray-600"
+            class="text-on-surface-faint hover:text-on-surface-muted flex shrink-0 cursor-pointer items-center justify-center rounded p-0.5 transition-colors"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -317,7 +317,7 @@ export function SearchBar() {
       </div>
 
       {hasQuery && (
-        <div class="border-t border-black/5">
+        <div class="border-outline-variant border-t">
           <div class="flex items-center gap-1.5 px-3 py-1.5">
             <button
               type="button"
@@ -326,8 +326,8 @@ export function SearchBar() {
               }}
               class={`rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide transition-colors ${
                 filters.stations
-                  ? "bg-gray-200 text-gray-700"
-                  : "hover:bg-gray-150 bg-gray-100 text-gray-400"
+                  ? "bg-surface-dim text-on-surface-variant"
+                  : "bg-surface-dim text-on-surface-faint"
               }`}
             >
               Stations
@@ -339,8 +339,8 @@ export function SearchBar() {
               }}
               class={`rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide transition-colors ${
                 filters.trams
-                  ? "bg-red-100 text-red-700"
-                  : "hover:bg-gray-150 bg-gray-100 text-gray-400"
+                  ? "bg-danger-container text-on-danger-container"
+                  : "bg-surface-dim text-on-surface-faint"
               }`}
             >
               Trams
@@ -352,15 +352,15 @@ export function SearchBar() {
               }}
               class={`rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide transition-colors ${
                 filters.buses
-                  ? "bg-blue-100 text-blue-700"
-                  : "hover:bg-gray-150 bg-gray-100 text-gray-400"
+                  ? "bg-primary-container text-on-primary-container"
+                  : "bg-surface-dim text-on-surface-faint"
               }`}
             >
               Buses
             </button>
           </div>
 
-          <div class="max-h-80 overflow-y-auto border-t border-black/5" role="listbox">
+          <div class="border-outline-variant max-h-80 overflow-y-auto border-t" role="listbox">
             {results.map((result, idx) => (
               <button
                 key={
@@ -371,7 +371,7 @@ export function SearchBar() {
                 type="button"
                 role="option"
                 aria-selected={focusedIndex === idx}
-                class="flex w-full cursor-pointer flex-col gap-0.5 border-none bg-transparent px-3 py-1.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 aria-selected:bg-blue-50 aria-selected:text-blue-800"
+                class="text-on-surface-variant hover:bg-surface-hover aria-selected:bg-primary-container aria-selected:text-on-primary-container flex w-full cursor-pointer flex-col gap-0.5 border-none bg-transparent px-3 py-1.5 text-left text-sm transition-colors"
                 onMouseDown={(e) => {
                   e.preventDefault();
                 }}
@@ -399,14 +399,14 @@ export function SearchBar() {
                         stroke-width="2"
                         stroke-linecap="round"
                         stroke-linejoin="round"
-                        class="shrink-0 text-gray-400"
+                        class="text-on-surface-faint shrink-0"
                       >
                         <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
                         <circle cx="12" cy="10" r="3" />
                       </svg>
                       <span class="font-medium">{result.item.name}</span>
                     </span>
-                    <span class="pl-6 text-xs text-gray-400">
+                    <span class="text-on-surface-faint pl-6 text-xs">
                       {result.item.ids.length === 1 ? "1 stop" : `${result.item.ids.length} stops`}
                     </span>
                   </>
@@ -414,14 +414,13 @@ export function SearchBar() {
                   <>
                     <span class="flex items-center gap-2">
                       <span
-                        class="inline-flex items-center justify-center rounded px-1.5 py-0.5 text-xs font-bold data-[color=blue]:bg-blue-100 data-[color=blue]:text-blue-800 data-[color=red]:bg-red-100 data-[color=red]:text-red-800"
-                        data-color={result.item.routeId.length > 2 ? "blue" : "red"}
+                        class={`inline-flex items-center justify-center rounded px-1.5 py-0.5 text-xs font-bold ${result.item.routeId.length > 2 ? "bg-primary-container text-on-primary-container" : "bg-danger-container text-on-danger-container"}`}
                       >
                         {result.item.routeId}
                       </span>
                       <span class="font-medium">{result.item.displayName}</span>
                     </span>
-                    <span class="pl-7 text-xs text-gray-400">
+                    <span class="text-on-surface-faint pl-7 text-xs">
                       {result.item.vehicles.length === 1
                         ? "1 vehicle"
                         : `${result.item.vehicles.length} vehicles`}
@@ -432,7 +431,7 @@ export function SearchBar() {
             ))}
 
             {!hasResults && (
-              <div class="px-3 py-3 text-center text-sm text-gray-400" role="status">
+              <div class="text-on-surface-faint px-3 py-3 text-center text-sm" role="status">
                 No results found
               </div>
             )}

@@ -1,6 +1,13 @@
 import { useEffect, useRef } from "preact/hooks";
 import { motion, AnimatePresence } from "motion/react";
-import { setMapStyleId, settingSignal, updateSetting, type MapStyleId } from "@/settings";
+import {
+  settingSignal,
+  updateSetting,
+  type MapStyleId,
+  type MapThemeMode,
+  type UiThemeMode,
+  type UiTheme,
+} from "@/settings";
 import { useSignalState } from "@/hooks/use-signal-state";
 import { ReactNode } from "preact/compat";
 import { signal } from "@preact/signals";
@@ -12,14 +19,38 @@ const MAP_STYLES: { id: MapStyleId; label: string }[] = [
   { id: "satellite", label: "Satellite" },
 ];
 
+const MAP_THEME_MODES: { id: MapThemeMode; label: string; description: string }[] = [
+  { id: "device", label: "Device", description: "System preference" },
+  { id: "time", label: "Sun Cycle", description: "Sunrise & sunset" },
+  { id: "manual", label: "Manual", description: "Choose yourself" },
+];
+
+const UI_THEME_MODES: { id: UiThemeMode; label: string; description: string }[] = [
+  { id: "device", label: "Device", description: "System preference" },
+  { id: "time", label: "Sun Cycle", description: "Sunrise & sunset" },
+  { id: "map", label: "Map", description: "Match map style" },
+  { id: "manual", label: "Manual", description: "Choose yourself" },
+];
+
+const UI_THEMES: { id: UiTheme; label: string }[] = [
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
+];
+
 const settingsOpenSignal = signal(false);
 const mapStyleIdSignal = settingSignal("mapStyle");
+const mapThemeModeSignal = settingSignal("mapThemeMode");
 const wakeLockEnabledSignal = settingSignal("wakeLockEnabled");
+const uiThemeModeSignal = settingSignal("uiThemeMode");
+const uiThemeManualSignal = settingSignal("uiThemeManual");
 
 export function SettingsModal() {
   const open = useSignalState(settingsOpenSignal);
   const currentStyle = useSignalState(mapStyleIdSignal);
+  const mapThemeMode = useSignalState(mapThemeModeSignal);
   const wakeLockEnabled = useSignalState(wakeLockEnabledSignal);
+  const uiThemeMode = useSignalState(uiThemeModeSignal);
+  const uiThemeManual = useSignalState(uiThemeManualSignal);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -61,13 +92,13 @@ export function SettingsModal() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            class="relative z-10 max-h-[85dvh] w-[90vw] max-w-md overflow-auto rounded-2xl bg-white shadow-xl"
+            class="bg-surface relative z-10 max-h-[85dvh] w-[90vw] max-w-md overflow-auto rounded-2xl shadow-xl"
             aria-label="Settings"
             aria-modal="true"
             aria-expanded="true"
           >
-            <div class="sticky top-0 flex items-center justify-between rounded-t-2xl bg-white px-4 py-2">
-              <h2 class="text-base font-bold text-gray-900">Settings</h2>
+            <div class="bg-surface sticky top-0 flex items-center justify-between rounded-t-2xl px-4 py-2">
+              <h2 class="text-on-surface text-base font-bold">Settings</h2>
               <button
                 type="button"
                 aria-label="Close settings"
@@ -76,7 +107,7 @@ export function SettingsModal() {
                 onClick={() => {
                   settingsOpenSignal.value = false;
                 }}
-                class="rounded-full p-2 text-gray-400 transition-colors hover:bg-gray-200/60 hover:text-gray-600"
+                class="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted rounded-full p-2 transition-colors"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -97,38 +128,128 @@ export function SettingsModal() {
 
             <div class="flex flex-col gap-6 px-5 pb-5">
               <SettingsCategory
-                title="Map"
+                title="Appearance"
                 sections={[
                   {
-                    title: "Theme",
-                    description: (
-                      <>
-                        Choose the visual style for the map. <br />
-                        <strong>Note: Changing the theme will reload the page.</strong>
-                      </>
-                    ),
+                    title: "Theme Source",
+                    description: "Control when dark mode is active.",
                     body: (
                       <div class="grid grid-cols-2 gap-2">
-                        {MAP_STYLES.map((s) => (
+                        {UI_THEME_MODES.map((m) => (
                           <button
-                            key={s.id}
+                            key={m.id}
                             type="button"
                             onClick={() => {
-                              setMapStyleId(s.id);
+                              updateSetting("uiThemeMode", m.id);
                             }}
-                            class={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                              currentStyle === s.id
-                                ? "border-blue-300 bg-blue-100 text-blue-800"
-                                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                            class={`cursor-pointer rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${
+                              uiThemeMode === m.id
+                                ? "border-primary bg-primary-container text-on-primary-container"
+                                : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
                             }`}
-                            aria-selected={currentStyle === s.id}
+                            aria-selected={uiThemeMode === m.id}
                           >
-                            {s.label}
+                            <span class="block">{m.label}</span>
+                            <span class="text-on-surface-muted block text-xs font-normal">
+                              {m.description}
+                            </span>
                           </button>
                         ))}
                       </div>
                     ),
                   },
+                  ...(uiThemeMode === "manual"
+                    ? [
+                        {
+                          title: "Theme",
+                          description: "Choose between light and dark appearance.",
+                          body: (
+                            <div class="grid grid-cols-2 gap-2">
+                              {UI_THEMES.map((t) => (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => {
+                                    updateSetting("uiThemeManual", t.id);
+                                  }}
+                                  class={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                                    uiThemeManual === t.id
+                                      ? "border-primary bg-primary-container text-on-primary-container"
+                                      : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
+                                  }`}
+                                  aria-selected={uiThemeManual === t.id}
+                                >
+                                  {t.label}
+                                </button>
+                              ))}
+                            </div>
+                          ),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+
+              <SettingsCategory
+                title="Map"
+                sections={[
+                  {
+                    title: "Style Source",
+                    description: "Auto-switch between 3D and 3D Dark, or pick a style manually.",
+                    body: (
+                      <div class="grid grid-cols-3 gap-2">
+                        {MAP_THEME_MODES.map((m) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => {
+                              updateSetting("mapThemeMode", m.id);
+                            }}
+                            class={`cursor-pointer rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${
+                              mapThemeMode === m.id
+                                ? "border-primary bg-primary-container text-on-primary-container"
+                                : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
+                            }`}
+                            aria-selected={mapThemeMode === m.id}
+                          >
+                            <span class="block">{m.label}</span>
+                            <span class="text-on-surface-muted block text-xs font-normal">
+                              {m.description}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ),
+                  },
+                  ...(mapThemeMode === "manual"
+                    ? [
+                        {
+                          title: "Style",
+                          description: "Choose the visual style for the map.",
+                          body: (
+                            <div class="grid grid-cols-2 gap-2">
+                              {MAP_STYLES.map((s) => (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  onClick={() => {
+                                    updateSetting("mapStyle", s.id);
+                                  }}
+                                  class={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                                    currentStyle === s.id
+                                      ? "border-primary bg-primary-container text-on-primary-container"
+                                      : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
+                                  }`}
+                                  aria-selected={currentStyle === s.id}
+                                >
+                                  {s.label}
+                                </button>
+                              ))}
+                            </div>
+                          ),
+                        },
+                      ]
+                    : []),
                 ]}
               />
 
@@ -149,16 +270,16 @@ export function SettingsModal() {
                         }}
                         class={`flex w-full cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
                           wakeLockEnabled
-                            ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                            : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                            ? "border-success bg-success-container text-on-success-container"
+                            : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
                         }`}
                       >
                         <span>{wakeLockEnabled ? "Screen stays on" : "Screen can turn off"}</span>
                         <span
                           class={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
                             wakeLockEnabled
-                              ? "bg-emerald-200 text-emerald-800"
-                              : "bg-gray-200 text-gray-600"
+                              ? "bg-success-container text-on-success-container"
+                              : "bg-surface-dim text-on-surface-muted"
                           }`}
                         >
                           {wakeLockEnabled ? "On" : "Off"}
@@ -186,7 +307,7 @@ export function SettingsButton() {
       }}
       aria-expanded={settingsOpenSignal.value}
       aria-controls="settings-panel"
-      class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg bg-white/80 text-gray-700 shadow-md backdrop-blur-sm transition-colors hover:bg-white/90"
+      class="bg-surface-overlay text-on-surface-variant hover:bg-surface flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg shadow-md backdrop-blur-sm transition-colors"
       title="Settings"
     >
       <svg
@@ -217,14 +338,16 @@ function SettingsCategory(props: {
 }) {
   return (
     <section>
-      <h3 class="mb-2 text-xs font-semibold tracking-wide text-gray-500 uppercase">
+      <h3 class="text-on-surface-muted mb-2 text-xs font-semibold tracking-wide uppercase">
         {props.title}
       </h3>
       <div class="flex flex-col gap-2">
         {props.sections.map((s, i) => (
-          <div key={i} class="flex flex-col rounded-xl bg-gray-100 p-3">
-            <div class="mb-1 cursor-default text-sm font-medium text-gray-900">{s.title}</div>
-            <div class="cursor-default text-xs text-gray-600 not-last:mb-3">{s.description}</div>
+          <div key={i} class="bg-surface-dim flex flex-col rounded-xl p-3">
+            <div class="text-on-surface mb-1 cursor-default text-sm font-medium">{s.title}</div>
+            <div class="text-on-surface-muted cursor-default text-xs not-last:mb-3">
+              {s.description}
+            </div>
             {s.body}
           </div>
         ))}

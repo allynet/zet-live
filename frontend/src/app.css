@@ -1,4 +1,74 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --surface: #ffffff;
+  --surface-overlay: rgb(255 255 255 / 0.85);
+  --surface-dim: #f3f4f6;
+  --surface-hover: rgb(229 231 235 / 0.6);
+  --on-surface: #111827;
+  --on-surface-variant: #374151;
+  --on-surface-muted: #6b7280;
+  --on-surface-faint: #9ca3af;
+  --outline: #e5e7eb;
+  --outline-variant: rgb(0 0 0 / 0.05);
+  --primary: #2563eb;
+  --primary-container: #dbeafe;
+  --on-primary: #ffffff;
+  --on-primary-container: #1e40af;
+  --success: #22c55e;
+  --success-container: #d1fae5;
+  --on-success-container: #065f46;
+  --danger: #dc2626;
+  --danger-container: #fee2e2;
+  --on-danger-container: #991b1b;
+}
+
+.dark {
+  --surface: #111827;
+  --surface-overlay: rgb(17 24 39 / 0.85);
+  --surface-dim: #1f2937;
+  --surface-hover: rgb(55 65 81 / 0.6);
+  --on-surface: #f3f4f6;
+  --on-surface-variant: #d1d5db;
+  --on-surface-muted: #9ca3af;
+  --on-surface-faint: #6b7280;
+  --outline: #374151;
+  --outline-variant: rgb(255 255 255 / 0.1);
+  --primary: #3b82f6;
+  --primary-container: rgb(59 130 246 / 0.15);
+  --on-primary: #ffffff;
+  --on-primary-container: #93c5fd;
+  --success: #4ade80;
+  --success-container: rgb(52 211 153 / 0.15);
+  --on-success-container: #6ee7b7;
+  --danger: #ef4444;
+  --danger-container: rgb(248 113 113 / 0.15);
+  --on-danger-container: #fca5a5;
+}
+
+@theme {
+  --color-surface: var(--surface);
+  --color-surface-overlay: var(--surface-overlay);
+  --color-surface-dim: var(--surface-dim);
+  --color-surface-hover: var(--surface-hover);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-on-surface-muted: var(--on-surface-muted);
+  --color-on-surface-faint: var(--on-surface-faint);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-primary: var(--primary);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary: var(--on-primary);
+  --color-on-primary-container: var(--on-primary-container);
+  --color-success: var(--success);
+  --color-success-container: var(--success-container);
+  --color-on-success-container: var(--on-success-container);
+  --color-danger: var(--danger);
+  --color-danger-container: var(--danger-container);
+  --color-on-danger-container: var(--on-danger-container);
+}
 
 html,
 body,

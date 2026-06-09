@@ -136,7 +136,7 @@ export function BottomSheet({
             }
           }
         }}
-        class="pointer-events-auto grid w-full max-w-md grid-rows-[auto_1fr_auto] overflow-hidden rounded-t-xl bg-white/90 shadow-lg backdrop-blur-sm"
+        class="bg-surface-overlay pointer-events-auto grid w-full max-w-md grid-rows-[auto_1fr_auto] overflow-hidden rounded-t-xl shadow-lg backdrop-blur-sm"
         data-minimized={minimized ? "true" : "false"}
         data-maximized={maximized ? "true" : "false"}
       >
@@ -160,7 +160,7 @@ export function BottomSheet({
               onClick={() => {
                 setSheetState((s) => (s === "minimized" ? "expanded" : "minimized"));
               }}
-              class="rounded-full p-1 text-gray-400 transition-colors hover:bg-gray-200/60 hover:text-gray-600"
+              class="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted rounded-full p-1 transition-colors"
             >
               {minimized ? (
                 <svg
@@ -195,7 +195,7 @@ export function BottomSheet({
             <button
               type="button"
               onClick={onClose}
-              class="rounded-full p-1 text-gray-400 transition-colors hover:bg-gray-200/60 hover:text-gray-600"
+              class="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted rounded-full p-1 transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"

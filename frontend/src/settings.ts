@@ -2,10 +2,16 @@ import { signal, computed } from "@preact/signals";
 import { useSignalState } from "./hooks/use-signal-state";
 
 export type MapStyleId = "3d" | "3d.dark" | "flat" | "satellite";
+export type MapThemeMode = "device" | "time" | "manual";
+export type UiThemeMode = "device" | "time" | "map" | "manual";
+export type UiTheme = "light" | "dark";
 
 const DEFAULTS = {
   mapStyle: "3d" as MapStyleId,
+  mapThemeMode: "manual" as MapThemeMode,
   wakeLockEnabled: true,
+  uiThemeMode: "manual" as UiThemeMode,
+  uiThemeManual: "light" as UiTheme,
 };
 
 export type Settings = typeof DEFAULTS;
@@ -19,10 +25,19 @@ function loadSettings(): Settings {
       const parsed = JSON.parse(raw) as Partial<Settings>;
       return {
         mapStyle: isValidMapStyle(parsed.mapStyle) ? parsed.mapStyle : DEFAULTS.mapStyle,
+        mapThemeMode: isValidMapThemeMode(parsed.mapThemeMode)
+          ? parsed.mapThemeMode
+          : DEFAULTS.mapThemeMode,
         wakeLockEnabled:
           typeof parsed.wakeLockEnabled === "boolean"
             ? parsed.wakeLockEnabled
             : DEFAULTS.wakeLockEnabled,
+        uiThemeMode: isValidUiThemeMode(parsed.uiThemeMode)
+          ? parsed.uiThemeMode
+          : DEFAULTS.uiThemeMode,
+        uiThemeManual: isValidUiTheme(parsed.uiThemeManual)
+          ? parsed.uiThemeManual
+          : DEFAULTS.uiThemeManual,
       };
     }
   } catch (e) {
@@ -33,6 +48,18 @@ function loadSettings(): Settings {
 
 function isValidMapStyle(value: unknown): value is MapStyleId {
   return value === "3d" || value === "3d.dark" || value === "flat" || value === "satellite";
+}
+
+function isValidMapThemeMode(value: unknown): value is MapThemeMode {
+  return value === "device" || value === "time" || value === "manual";
+}
+
+function isValidUiThemeMode(value: unknown): value is UiThemeMode {
+  return value === "device" || value === "time" || value === "map" || value === "manual";
+}
+
+function isValidUiTheme(value: unknown): value is UiTheme {
+  return value === "light" || value === "dark";
 }
 
 function persist(settings: Settings) {
@@ -56,9 +83,4 @@ export function useSetting<T extends keyof Settings>(key: T) {
 export function updateSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
   settingsSignal.value = { ...settingsSignal.value, [key]: value };
   persist(settingsSignal.value);
-}
-
-export function setMapStyleId(id: MapStyleId) {
-  updateSetting("mapStyle", id);
-  globalThis.location.reload();
 }
