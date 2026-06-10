@@ -1,6 +1,5 @@
-import { useEffect, useState } from "preact/hooks";
-import { lastUpdateSignal, lastErrorSignal, wsConnectedSignal } from "@/state";
-import { useSignalState } from "@/hooks/use-signal-state";
+import { useEffect, useState } from "react";
+import { useStore } from "@/store";
 
 function formatAgo(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -13,9 +12,9 @@ function formatAgo(ms: number): string {
 
 export function StatusBar() {
   const [expanded, setExpanded] = useState(false);
-  const lastUpdate = useSignalState(lastUpdateSignal);
-  const lastError = useSignalState(lastErrorSignal);
-  const wsConnected = useSignalState(wsConnectedSignal);
+  const lastUpdate = useStore((s) => s.lastUpdate);
+  const lastError = useStore((s) => s.lastError);
+  const wsConnected = useStore((s) => s.wsConnected);
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -41,10 +40,10 @@ export function StatusBar() {
       onClick={() => {
         setExpanded((e) => !e);
       }}
-      class="bg-surface-overlay text-on-surface flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs shadow-md backdrop-blur-sm select-none"
+      className="bg-surface-overlay text-on-surface flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs shadow-md backdrop-blur-sm select-none"
     >
       <span
-        class={`inline-block h-2 w-2 shrink-0 rounded-full ${wsConnected ? "bg-success" : "bg-danger animate-pulse"}`}
+        className={`inline-block h-2 w-2 shrink-0 rounded-full ${wsConnected ? "bg-success" : "bg-danger animate-pulse"}`}
       />
       {expanded && (
         <div
@@ -52,15 +51,15 @@ export function StatusBar() {
           aria-modal="true"
           role="menu"
           id="connection-status-panel"
-          class="flex items-center gap-2"
+          className="flex items-center gap-2"
         >
           <span>{wsConnected ? "Connected" : "Disconnected"}</span>
-          <span class="text-on-surface-muted">|</span>
+          <span className="text-on-surface-muted">|</span>
           <span>Last update: {ago}</span>
           {lastError && (
             <>
-              <span class="text-on-surface-muted">|</span>
-              <span class="text-on-danger-container">{lastError}</span>
+              <span className="text-on-surface-muted">|</span>
+              <span className="text-on-danger-container">{lastError}</span>
             </>
           )}
         </div>

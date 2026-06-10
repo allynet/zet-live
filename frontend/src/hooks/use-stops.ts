@@ -1,4 +1,3 @@
-import { batch } from "@preact/signals";
 import type { V1Message } from "@/app/entity/v1/message";
 import {
   parseResponse,
@@ -10,51 +9,36 @@ import {
 import { VehicleV1 } from "@/app/entity/v1/vehicle";
 import { StopV1 } from "@/app/entity/v1/stop";
 import { API_URL } from "@/app/consts";
-import {
-  vehiclesSignal,
-  vehicleBoundsSignal,
-  simpleStopsSignal,
-  deltaMoveLinesSignal,
-  followingVehicleIdSignal,
-  followingStopIdsSignal,
-  followingRouteSignal,
-  followingTripIdSignal,
-  displayedStopsSignal,
-  stopsGroupedSignal,
-  tripStopTimesSignal,
-  stopArrivalTimesSignal,
-  stopBoundsSignal,
-  type VehicleLocationPair,
-  updateMaxBounds,
-} from "@/state";
+import { useStore, type VehicleLocationPair, updateMaxBounds } from "@/store";
 import type { StopsUpdateResponse } from "./use-worker";
 
 export function handleStopsUpdate(response: StopsUpdateResponse) {
   if (response.stops) {
     const stops = response.stops.map((s) => new StopV1(s));
 
-    batch(() => {
-      simpleStopsSignal.value = Object.fromEntries(stops.map((stop) => [stop.id, stop]));
-      if (response.bounds) {
-        stopBoundsSignal.value = response.bounds;
-      }
-      updateMaxBounds();
+    useStore.setState({
+      simpleStops: Object.fromEntries(stops.map((stop) => [stop.id, stop])),
+      ...(response.bounds ? { stopBounds: response.bounds } : {}),
     });
+    updateMaxBounds();
 
     console.log("Updating stops");
   }
 
-  stopsGroupedSignal.value = response.grouped;
-
-  if (!followingVehicleIdSignal.value && followingStopIdsSignal.value.length === 0) {
-    displayedStopsSignal.value = response.grouped;
-  }
+  const state = useStore.getState();
+  useStore.setState({
+    stopsGrouped: response.grouped,
+    displayedStops:
+      !state.followingVehicleId && state.followingStopIds.length === 0
+        ? response.grouped
+        : state.displayedStops,
+  });
 }
 
 export function processMessage(message: V1Message) {
   if (typeof message.d === "object" && "vehicles" in message.d) {
     const rawVehicles = message.d.vehicles;
-    const currentMap = vehiclesSignal.value;
+    const currentMap = useStore.getState().vehicles;
     const locationPairs: VehicleLocationPair[] = [];
 
     let minLat = 89.5;
@@ -88,27 +72,26 @@ export function processMessage(message: V1Message) {
       maxLng = Math.max(maxLng, vehicle.lng);
     }
 
-    batch(() => {
-      vehiclesSignal.value = newMap;
-      vehicleBoundsSignal.value = [
+    useStore.setState({
+      vehicles: newMap,
+      vehicleBounds: [
         [minLng, minLat],
         [maxLng, maxLat],
-      ];
-      deltaMoveLinesSignal.value = locationPairs;
-      updateMaxBounds();
+      ],
+      deltaMoveLines: locationPairs,
     });
+    updateMaxBounds();
 
     const now = Date.now();
     if (now - lastStopTimesRefresh >= STOP_TIMES_REFRESH_INTERVAL) {
       lastStopTimesRefresh = now;
 
-      const tripId = followingTripIdSignal.value;
-      const stopIds = followingStopIdsSignal.value;
+      const { followingTripId, followingStopIds } = useStore.getState();
 
-      if (tripId) {
-        void refreshTripStopTimes(tripId);
-      } else if (stopIds.length > 0) {
-        void refreshStopArrivalTimes(stopIds);
+      if (followingTripId) {
+        void refreshTripStopTimes(followingTripId);
+      } else if (followingStopIds.length > 0) {
+        void refreshStopArrivalTimes(followingStopIds);
       }
     }
   }
@@ -135,17 +118,8 @@ export async function fetchFollowingRoute(tripId: string) {
     return;
   }
 
-  followingRouteSignal.value = shape.d.route;
-
-  const simpleStops = simpleStopsSignal.value;
+  const simpleStops = useStore.getState().simpleStops;
   const stops = shape.d.stopIds.map((id) => simpleStops[id]).filter(Boolean);
-
-  displayedStopsSignal.value = stops.map((stop) => ({
-    name: stop.name,
-    lat: stop.lat,
-    lng: stop.lng,
-    ids: [stop.id],
-  }));
 
   const map = new Map<string, number>();
   for (const s of shape.d.stopTimes) {
@@ -153,7 +127,17 @@ export async function fetchFollowingRoute(tripId: string) {
       map.set(s.stopId, s.arrivalTime);
     }
   }
-  tripStopTimesSignal.value = map;
+
+  useStore.setState({
+    followingRoute: shape.d.route,
+    displayedStops: stops.map((stop) => ({
+      name: stop.name,
+      lat: stop.lat,
+      lng: stop.lng,
+      ids: [stop.id],
+    })),
+    tripStopTimes: map,
+  });
 }
 
 let stopTripsAbort: AbortController | null = null;
@@ -182,7 +166,7 @@ async function refreshTripStopTimes(tripId: string) {
       map.set(s.stopId, s.arrivalTime);
     }
   }
-  tripStopTimesSignal.value = map;
+  useStore.setState({ tripStopTimes: map });
 }
 
 async function refreshStopArrivalTimes(stopIds: string[]) {
@@ -203,7 +187,7 @@ async function refreshStopArrivalTimes(stopIds: string[]) {
 
   if (signal.aborted) return;
 
-  stopArrivalTimesSignal.value = res?.d.arrivalTimes ?? null;
+  useStore.setState({ stopArrivalTimes: res?.d.arrivalTimes ?? null });
 }
 
 export async function fetchStopTrips(stopIds: string[]) {
@@ -225,7 +209,7 @@ export async function fetchStopTrips(stopIds: string[]) {
 
   if (signal.aborted) return null;
 
-  stopArrivalTimesSignal.value = trips?.d.arrivalTimes ?? null;
+  useStore.setState({ stopArrivalTimes: trips?.d.arrivalTimes ?? null });
 
   return trips?.d.stopTrips ?? null;
 }

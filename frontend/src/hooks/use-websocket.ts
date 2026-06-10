@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "preact/hooks";
+import { useEffect, useCallback } from "react";
 import {
   getSharedWorker,
   postWorkerMessage,
@@ -8,7 +8,7 @@ import {
 } from "./use-worker";
 import { API_URL } from "@/app/consts";
 import { processMessage, handleStopsUpdate } from "./use-stops";
-import { lastUpdateSignal, lastErrorSignal, wsConnectedSignal } from "@/state";
+import { useStore } from "@/store";
 
 export function useWebSocket() {
   useEffect(() => {
@@ -55,8 +55,7 @@ export function useWebSocket() {
   const sendToWorker = useCallback((data: Blob) => {
     const worker = getSharedWorker();
     postWorkerMessage(worker, data);
-    lastUpdateSignal.value = Date.now();
-    lastErrorSignal.value = null;
+    useStore.setState({ lastUpdate: Date.now(), lastError: null });
   }, []);
 
   useEffect(() => {
@@ -82,8 +81,7 @@ export function useWebSocket() {
           "error",
           (e) => {
             console.error("WebSocket error", e);
-            lastErrorSignal.value = "Connection error";
-            wsConnectedSignal.value = false;
+            useStore.setState({ lastError: "Connection error", wsConnected: false });
             ws.close();
           },
           { signal },
@@ -93,7 +91,7 @@ export function useWebSocket() {
           "close",
           (e) => {
             console.log("WebSocket closed", e);
-            wsConnectedSignal.value = false;
+            useStore.setState({ wsConnected: false });
             signal.removeEventListener("abort", onAbort);
             resolve(null);
           },
@@ -104,8 +102,7 @@ export function useWebSocket() {
           "open",
           (e) => {
             console.log("WebSocket opened", e);
-            wsConnectedSignal.value = true;
-            lastErrorSignal.value = null;
+            useStore.setState({ wsConnected: true, lastError: null });
           },
           { signal },
         );

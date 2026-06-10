@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "preact/hooks";
-import { useSignalState } from "@/hooks/use-signal-state";
-import { lastUpdateSignal, simpleStopsSignal, wsConnectedSignal, mapReadySignal } from "@/state";
+import { useEffect, useRef, useState } from "react";
+import { useStore } from "@/store";
 
 type Step = {
   label: string;
@@ -13,20 +12,20 @@ const MIN_LOADING_TIME = 150;
 function CheckIcon({ done }: { done: boolean }) {
   if (!done) {
     return (
-      <span class="border-on-surface-faint inline-block h-4 w-4 shrink-0 rounded-full border-2" />
+      <span className="border-on-surface-faint inline-block h-4 w-4 shrink-0 rounded-full border-2" />
     );
   }
 
   return (
-    <span class="bg-success inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full">
+    <span className="bg-success inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full">
       <svg
-        class="text-on-primary h-3 w-3"
+        className="text-on-primary h-3 w-3"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        stroke-width="3"
-        stroke-linecap="round"
-        stroke-linejoin="round"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
         <polyline points="20 6 9 17 4 12" />
       </svg>
@@ -35,10 +34,10 @@ function CheckIcon({ done }: { done: boolean }) {
 }
 
 export function LoadingScreen() {
-  const wsConnected = useSignalState(wsConnectedSignal);
-  const lastUpdate = useSignalState(lastUpdateSignal);
-  const simpleStops = useSignalState(simpleStopsSignal);
-  const mapReady = useSignalState(mapReadySignal);
+  const wsConnected = useStore((s) => s.wsConnected);
+  const lastUpdate = useStore((s) => s.lastUpdate);
+  const simpleStops = useStore((s) => s.simpleStops);
+  const mapReady = useStore((s) => s.mapReady);
 
   const mountTime = useRef(Date.now());
   const [fading, setFading] = useState(false);
@@ -88,20 +87,23 @@ export function LoadingScreen() {
 
   return (
     <div
-      class="bg-surface fixed inset-0 z-9999 flex items-center justify-center"
+      className="bg-surface fixed inset-0 z-9999 flex items-center justify-center"
       style={fading ? { transition: `opacity ${FADE_DURATION}ms ease-out`, opacity: 0 } : undefined}
     >
-      <div class="flex flex-col items-center gap-6">
-        <div class="flex flex-col items-center gap-2">
-          <h1 class="text-on-surface text-2xl font-bold">ZET Live</h1>
-          <div class="border-outline border-t-on-surface h-5 w-5 animate-spin rounded-full border-2" />
+      <div className="flex flex-col items-center gap-6">
+        <div className="flex flex-col items-center gap-2">
+          <h1 className="text-on-surface text-2xl font-bold">ZET Live</h1>
+          <div className="border-outline border-t-on-surface h-5 w-5 animate-spin rounded-full border-2" />
         </div>
 
-        <ul class="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2">
           {steps.map((step) => (
-            <li key={step.label} class="text-on-surface-variant flex items-center gap-2 text-sm">
+            <li
+              key={step.label}
+              className="text-on-surface-variant flex items-center gap-2 text-sm"
+            >
               <CheckIcon done={step.done} />
-              <span class={step.done ? "text-on-surface-faint line-through" : ""}>
+              <span className={step.done ? "text-on-surface-faint line-through" : ""}>
                 {step.label}
               </span>
             </li>

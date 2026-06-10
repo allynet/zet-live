@@ -1,4 +1,4 @@
-import type { StopArrivalTime } from "@/state";
+import type { StopArrivalTime } from "@/store";
 
 function formatMinutesFromNow(arrivalTime: number): string {
   const secondsUntil = arrivalTime - Date.now() / 1000;
@@ -38,28 +38,28 @@ export function StopSheet({ arrivals, onArrivalClick }: Props) {
   });
 
   return (
-    <div class="px-4 pb-3">
-      <div class="space-y-1">
+    <div className="px-4 pb-3">
+      <div className="space-y-1">
         {arrivals == null ? (
-          <span class="text-on-surface-faint text-xs italic">Loading arrivals...</span>
+          <span className="text-on-surface-faint text-xs italic">Loading arrivals...</span>
         ) : sortedGroups.length === 0 ? (
-          <span class="text-on-surface-faint text-xs italic">No active vehicles</span>
+          <span className="text-on-surface-faint text-xs italic">No active vehicles</span>
         ) : (
           sortedGroups.map(([routeId, times]) => {
             const isBus = routeId.length > 2;
             return (
-              <div key={routeId} class="flex items-center gap-2">
+              <div key={routeId} className="flex items-center gap-2">
                 <span
-                  class={`text-on-primary inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-xs font-bold ${isBus ? "bg-primary" : "bg-danger"}`}
+                  className={`text-on-primary inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-xs font-bold ${isBus ? "bg-primary" : "bg-danger"}`}
                 >
                   {routeId}
                 </span>
-                <div class="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1">
                   {times.map((t) =>
                     t.arrivalTime != null ? (
                       <span
                         key={t.vehicleId}
-                        class="bg-surface-dim text-on-surface-variant active:bg-surface-hover cursor-pointer rounded px-1.5 py-0.5 text-xs font-medium"
+                        className="bg-surface-dim text-on-surface-variant active:bg-surface-hover cursor-pointer rounded px-1.5 py-0.5 text-xs font-medium"
                         onClick={() => {
                           onArrivalClick(t.vehicleId, t.tripId);
                         }}

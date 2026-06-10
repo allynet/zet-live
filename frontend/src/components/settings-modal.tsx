@@ -1,16 +1,15 @@
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  settingSignal,
+  settingsStore,
   updateSetting,
+  useSetting,
   type MapStyleId,
   type MapThemeMode,
   type UiThemeMode,
   type UiTheme,
 } from "@/settings";
-import { useSignalState } from "@/hooks/use-signal-state";
-import { ReactNode } from "preact/compat";
-import { signal } from "@preact/signals";
+import type { ReactNode } from "react";
 
 const MAP_STYLES: { id: MapStyleId; label: string }[] = [
   { id: "3d", label: "3D" },
@@ -37,20 +36,13 @@ const UI_THEMES: { id: UiTheme; label: string }[] = [
   { id: "dark", label: "Dark" },
 ];
 
-const settingsOpenSignal = signal(false);
-const mapStyleIdSignal = settingSignal("mapStyle");
-const mapThemeModeSignal = settingSignal("mapThemeMode");
-const wakeLockEnabledSignal = settingSignal("wakeLockEnabled");
-const uiThemeModeSignal = settingSignal("uiThemeMode");
-const uiThemeManualSignal = settingSignal("uiThemeManual");
-
 export function SettingsModal() {
-  const open = useSignalState(settingsOpenSignal);
-  const currentStyle = useSignalState(mapStyleIdSignal);
-  const mapThemeMode = useSignalState(mapThemeModeSignal);
-  const wakeLockEnabled = useSignalState(wakeLockEnabledSignal);
-  const uiThemeMode = useSignalState(uiThemeModeSignal);
-  const uiThemeManual = useSignalState(uiThemeManualSignal);
+  const open = settingsStore((s) => s._settingsOpen);
+  const currentStyle = useSetting("mapStyle");
+  const mapThemeMode = useSetting("mapThemeMode");
+  const wakeLockEnabled = useSetting("wakeLockEnabled");
+  const uiThemeMode = useSetting("uiThemeMode");
+  const uiThemeManual = useSetting("uiThemeManual");
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,7 +50,7 @@ export function SettingsModal() {
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        settingsOpenSignal.value = false;
+        settingsStore.setState({ _settingsOpen: false });
       }
     }
 
@@ -73,16 +65,16 @@ export function SettingsModal() {
       {open && (
         <div
           id="settings-panel"
-          class="pointer-events-auto fixed inset-0 z-2000 flex items-center justify-center"
+          className="pointer-events-auto fixed inset-0 z-2000 flex items-center justify-center"
         >
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            class="absolute inset-0 bg-black/30"
+            className="absolute inset-0 bg-black/30"
             onClick={() => {
-              settingsOpenSignal.value = false;
+              settingsStore.setState({ _settingsOpen: false });
             }}
           />
 
@@ -92,22 +84,22 @@ export function SettingsModal() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            class="bg-surface relative z-10 max-h-[85dvh] w-[90vw] max-w-md overflow-auto rounded-2xl shadow-xl"
+            className="bg-surface relative z-10 max-h-[85dvh] w-[90vw] max-w-md overflow-auto rounded-2xl shadow-xl"
             aria-label="Settings"
             aria-modal="true"
             aria-expanded="true"
           >
-            <div class="bg-surface sticky top-0 flex items-center justify-between rounded-t-2xl px-4 py-2">
-              <h2 class="text-on-surface text-base font-bold">Settings</h2>
+            <div className="bg-surface sticky top-0 flex items-center justify-between rounded-t-2xl px-4 py-2">
+              <h2 className="text-on-surface text-base font-bold">Settings</h2>
               <button
                 type="button"
                 aria-label="Close settings"
-                aria-expanded={settingsOpenSignal.value}
+                aria-expanded={open}
                 aria-controls="settings-panel"
                 onClick={() => {
-                  settingsOpenSignal.value = false;
+                  settingsStore.setState({ _settingsOpen: false });
                 }}
-                class="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted rounded-full p-2 transition-colors"
+                className="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted rounded-full p-2 transition-colors"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -116,9 +108,9 @@ export function SettingsModal() {
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
@@ -126,7 +118,7 @@ export function SettingsModal() {
               </button>
             </div>
 
-            <div class="flex flex-col gap-6 px-5 pb-5">
+            <div className="flex flex-col gap-6 px-5 pb-5">
               <SettingsCategory
                 title="Appearance"
                 sections={[
@@ -134,7 +126,7 @@ export function SettingsModal() {
                     title: "Theme Source",
                     description: "Control when dark mode is active.",
                     body: (
-                      <div class="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-2">
                         {UI_THEME_MODES.map((m) => (
                           <button
                             key={m.id}
@@ -142,15 +134,15 @@ export function SettingsModal() {
                             onClick={() => {
                               updateSetting("uiThemeMode", m.id);
                             }}
-                            class={`cursor-pointer rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${
+                            className={`cursor-pointer rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${
                               uiThemeMode === m.id
                                 ? "border-primary bg-primary-container text-on-primary-container"
                                 : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
                             }`}
                             aria-selected={uiThemeMode === m.id}
                           >
-                            <span class="block">{m.label}</span>
-                            <span class="text-on-surface-muted block text-xs font-normal">
+                            <span className="block">{m.label}</span>
+                            <span className="text-on-surface-muted block text-xs font-normal">
                               {m.description}
                             </span>
                           </button>
@@ -164,7 +156,7 @@ export function SettingsModal() {
                           title: "Theme",
                           description: "Choose between light and dark appearance.",
                           body: (
-                            <div class="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-2 gap-2">
                               {UI_THEMES.map((t) => (
                                 <button
                                   key={t.id}
@@ -172,7 +164,7 @@ export function SettingsModal() {
                                   onClick={() => {
                                     updateSetting("uiThemeManual", t.id);
                                   }}
-                                  class={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                                  className={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
                                     uiThemeManual === t.id
                                       ? "border-primary bg-primary-container text-on-primary-container"
                                       : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
@@ -197,7 +189,7 @@ export function SettingsModal() {
                     title: "Style Source",
                     description: "Auto-switch between 3D and 3D Dark, or pick a style manually.",
                     body: (
-                      <div class="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         {MAP_THEME_MODES.map((m) => (
                           <button
                             key={m.id}
@@ -205,15 +197,15 @@ export function SettingsModal() {
                             onClick={() => {
                               updateSetting("mapThemeMode", m.id);
                             }}
-                            class={`cursor-pointer rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${
+                            className={`cursor-pointer rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${
                               mapThemeMode === m.id
                                 ? "border-primary bg-primary-container text-on-primary-container"
                                 : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
                             }`}
                             aria-selected={mapThemeMode === m.id}
                           >
-                            <span class="block">{m.label}</span>
-                            <span class="text-on-surface-muted block text-xs font-normal">
+                            <span className="block">{m.label}</span>
+                            <span className="text-on-surface-muted block text-xs font-normal">
                               {m.description}
                             </span>
                           </button>
@@ -227,7 +219,7 @@ export function SettingsModal() {
                           title: "Style",
                           description: "Choose the visual style for the map.",
                           body: (
-                            <div class="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-2 gap-2">
                               {MAP_STYLES.map((s) => (
                                 <button
                                   key={s.id}
@@ -235,7 +227,7 @@ export function SettingsModal() {
                                   onClick={() => {
                                     updateSetting("mapStyle", s.id);
                                   }}
-                                  class={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                                  className={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
                                     currentStyle === s.id
                                       ? "border-primary bg-primary-container text-on-primary-container"
                                       : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
@@ -268,7 +260,7 @@ export function SettingsModal() {
                         onClick={() => {
                           updateSetting("wakeLockEnabled", !wakeLockEnabled);
                         }}
-                        class={`flex w-full cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
+                        className={`flex w-full cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
                           wakeLockEnabled
                             ? "border-success bg-success-container text-on-success-container"
                             : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
@@ -276,7 +268,7 @@ export function SettingsModal() {
                       >
                         <span>{wakeLockEnabled ? "Screen stays on" : "Screen can turn off"}</span>
                         <span
-                          class={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
                             wakeLockEnabled
                               ? "bg-success-container text-on-success-container"
                               : "bg-surface-dim text-on-surface-muted"
@@ -298,16 +290,18 @@ export function SettingsModal() {
 }
 
 export function SettingsButton() {
+  const open = settingsStore((s) => s._settingsOpen);
+
   return (
     <button
       type="button"
       aria-label="Open settings"
       onClick={() => {
-        settingsOpenSignal.value = true;
+        settingsStore.setState({ _settingsOpen: true });
       }}
-      aria-expanded={settingsOpenSignal.value}
+      aria-expanded={open}
       aria-controls="settings-panel"
-      class="bg-surface-overlay text-on-surface-variant hover:bg-surface flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg shadow-md backdrop-blur-sm transition-colors"
+      className="bg-surface-overlay text-on-surface-variant hover:bg-surface flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg shadow-md backdrop-blur-sm transition-colors"
       title="Settings"
     >
       <svg
@@ -317,9 +311,9 @@ export function SettingsButton() {
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
         <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
         <circle cx="12" cy="12" r="3" />
@@ -338,14 +332,14 @@ function SettingsCategory(props: {
 }) {
   return (
     <section>
-      <h3 class="text-on-surface-muted mb-2 text-xs font-semibold tracking-wide uppercase">
+      <h3 className="text-on-surface-muted mb-2 text-xs font-semibold tracking-wide uppercase">
         {props.title}
       </h3>
-      <div class="flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
         {props.sections.map((s, i) => (
-          <div key={i} class="bg-surface-dim flex flex-col rounded-xl p-3">
-            <div class="text-on-surface mb-1 cursor-default text-sm font-medium">{s.title}</div>
-            <div class="text-on-surface-muted cursor-default text-xs not-last:mb-3">
+          <div key={i} className="bg-surface-dim flex flex-col rounded-xl p-3">
+            <div className="text-on-surface mb-1 cursor-default text-sm font-medium">{s.title}</div>
+            <div className="text-on-surface-muted cursor-default text-xs not-last:mb-3">
               {s.description}
             </div>
             {s.body}

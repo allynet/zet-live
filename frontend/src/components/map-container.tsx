@@ -6,33 +6,18 @@ import MapGL, {
   type MapRef,
   type MapLayerMouseEvent,
 } from "react-map-gl/maplibre";
-import { useRef, useCallback, useEffect, useMemo, useState } from "preact/hooks";
-import { useSignalEffect } from "@preact/signals";
+import { useRef, useCallback, useEffect, useMemo, useState } from "react";
 import type { StyleSpecification } from "maplibre-gl";
 import type { FeatureCollection } from "geojson";
 import mapStyle3d from "@/data/maps/style/3d.json";
 import mapStyle3dDark from "@/data/maps/style/3d.dark.json";
 import mapStyleFlat from "@/data/maps/style/flat.json";
 import mapStyleSatellite from "@/data/maps/style/satellite.json";
-import {
-  vehiclesSignal,
-  followingVehicleIdSignal,
-  followEnabledSignal,
-  followingTripIdsSignal,
-  deltaMoveLinesSignal,
-  displayedStopsSignal,
-  followingRouteSignal,
-  mapReadySignal,
-  maxBoundsSignal,
-  flyToTargetSignal,
-  searchMatchedVehicleMapIdsSignal,
-  searchMatchedStopIdsSignal,
-} from "@/state";
+import { useStore } from "@/store";
 import { type MapStyleId } from "@/settings";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
-import { useSignalState } from "@/hooks/use-signal-state";
 import { useGeolocationPermission } from "@/hooks/use-geolocation-permission";
-import { resolvedMapStyleIdSignal } from "@/hooks/use-theme";
+import { themeStore } from "@/hooks/use-theme";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { calculateLatOffset } from "@/utils/map";
 import {
@@ -171,19 +156,22 @@ function useRafSetData(mapRef: { current: MapRef | null }, sourceId: string, dat
 export function MapContainer() {
   const mapRef = useRef<MapRef>(null);
   const [iconsReady, setIconsReady] = useState(false);
-  const resolvedMapStyleId = useSignalState(resolvedMapStyleIdSignal);
+  const resolvedMapStyleId = themeStore((s) => s.resolvedMapStyleId);
   const mapStyle = styleMap.get(resolvedMapStyleId) ?? (mapStyle3d as StyleSpecification);
-  const vehicles = useSignalState(vehiclesSignal);
-  const followingVehicleId = useSignalState(followingVehicleIdSignal);
-  const followingTripIds = useSignalState(followingTripIdsSignal);
-  const deltaMoveLines = useSignalState(deltaMoveLinesSignal);
-  const displayedStops = useSignalState(displayedStopsSignal);
-  const followingRoute = useSignalState(followingRouteSignal);
-  const maxBounds = useSignalState(maxBoundsSignal);
+  const vehicles = useStore((s) => s.vehicles);
+  const followingVehicleId = useStore((s) => s.followingVehicleId);
+  const followingTripIds = useStore((s) => s.followingTripIds);
+  const deltaMoveLines = useStore((s) => s.deltaMoveLines);
+  const displayedStops = useStore((s) => s.displayedStops);
+  const followingRoute = useStore((s) => s.followingRoute);
+  const maxBounds = useStore((s) => s.maxBounds);
   const geolocPermission = useGeolocationPermission();
-  const searchMatchedVehicleIds = useSignalState(searchMatchedVehicleMapIdsSignal);
-  const searchMatchedStopIds = useSignalState(searchMatchedStopIdsSignal);
+  const searchMatchedVehicleIds = useStore((s) => s.searchMatchedVehicleMapIds);
+  const searchMatchedStopIds = useStore((s) => s.searchMatchedStopIds);
   const searchActive = searchMatchedVehicleIds !== null || searchMatchedStopIds !== null;
+
+  const followEnabled = useStore((s) => s.followEnabled);
+  const flyToTarget = useStore((s) => s.flyToTarget);
 
   const selectedVehicle = followingVehicleId ? (vehicles.get(followingVehicleId) ?? null) : null;
   const nextStopId = selectedVehicle?.nextStopId ?? null;
@@ -208,31 +196,31 @@ export function MapContainer() {
     clearSelection();
   }, []);
 
-  const onLoad = useCallback(async () => {
+  const onLoad = useCallback(() => {
     const map = mapRef.current?.getMap();
     if (!map) return;
 
-    const arrowImage = await createArrowHeadImage("#00000077");
-    if (!map.hasImage("arrow-head")) {
-      map.addImage("arrow-head", arrowImage);
-    }
+    void (async () => {
+      const arrowImage = await createArrowHeadImage("#00000077");
+      if (!map.hasImage("arrow-head")) {
+        map.addImage("arrow-head", arrowImage);
+      }
 
-    map.setMaxBounds(maxBoundsSignal.value);
-    setIconsReady(true);
-    mapReadySignal.value = true;
+      map.setMaxBounds(useStore.getState().maxBounds);
+      setIconsReady(true);
+      useStore.setState({ mapReady: true });
+    })();
   }, []);
 
   const onDragStart = useCallback(() => {
-    if (followEnabledSignal.value) {
-      followEnabledSignal.value = false;
+    if (useStore.getState().followEnabled) {
+      useStore.setState({ followEnabled: false });
     }
   }, []);
 
-  useSignalEffect(() => {
-    const followEnabled = followEnabledSignal.value;
-    const fvid = followingVehicleIdSignal.value;
-    if (!followEnabled || !fvid) return;
-    const vehicle = vehiclesSignal.value.get(fvid);
+  useEffect(() => {
+    if (!followEnabled || !followingVehicleId) return;
+    const vehicle = vehicles.get(followingVehicleId);
     if (!vehicle) return;
 
     const map = mapRef.current?.getMap();
@@ -244,7 +232,7 @@ export function MapContainer() {
       center: [vehicle.lng, vehicle.lat - offset],
       duration: 500,
     });
-  });
+  }, [followEnabled, followingVehicleId, vehicles]);
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
@@ -273,16 +261,15 @@ export function MapContainer() {
     map.setMaxBounds(maxBounds);
   }, [maxBounds]);
 
-  useSignalEffect(() => {
-    const target = flyToTargetSignal.value;
-    if (!target) return;
+  useEffect(() => {
+    if (!flyToTarget) return;
     const offset = calculateLatOffset(mapRef.current?.getMap());
     mapRef.current?.flyTo({
-      center: [target.longitude, target.latitude - offset],
+      center: [flyToTarget.longitude, flyToTarget.latitude - offset],
       duration: 1000,
     });
-    flyToTargetSignal.value = null;
-  });
+    useStore.setState({ flyToTarget: null });
+  }, [flyToTarget]);
 
   const vehicleIconsToEnsure = useMemo<VehicleIconDescriptor[]>(() => {
     const unique = new Map<string, VehicleIconDescriptor>();
@@ -407,7 +394,7 @@ export function MapContainer() {
   );
 
   return (
-    <div class="relative h-full w-full">
+    <div className="relative h-full w-full">
       <MapGL
         key={resolvedMapStyleId}
         ref={mapRef}
@@ -423,7 +410,7 @@ export function MapContainer() {
         onClick={handleClick}
         onLoad={onLoad}
         onDragStart={onDragStart}
-        class="h-full w-full"
+        className="h-full w-full"
       >
         <NavigationControl visualizeZoom visualizePitch />
 

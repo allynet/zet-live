@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "preact/hooks";
-import type { ComponentChildren } from "preact";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { animate, motion, useDragControls, useMotionValue } from "motion/react";
 import {
   requestAnimationFrame,
@@ -10,10 +10,10 @@ type SheetState = "minimized" | "expanded" | "maximized";
 
 type Props = {
   open: boolean;
-  title: ComponentChildren;
+  title: ReactNode;
   onClose: () => void;
-  children: ComponentChildren;
-  minimizedBody?: ComponentChildren;
+  children: ReactNode;
+  minimizedBody?: ReactNode;
   expandedHeight?: string;
   maximizedHeight?: string;
 };
@@ -84,7 +84,7 @@ export function BottomSheet({
   if (!rendered) return null;
 
   return (
-    <div class="pointer-events-none fixed right-0 bottom-0 left-0 z-999 flex justify-center">
+    <div className="pointer-events-none fixed right-0 bottom-0 left-0 z-999 flex justify-center">
       <motion.div
         aria-role="dialog"
         aria-label="Bottom sheet"
@@ -136,7 +136,7 @@ export function BottomSheet({
             }
           }
         }}
-        class="bg-surface-overlay pointer-events-auto grid w-full max-w-md grid-rows-[auto_1fr_auto] overflow-hidden rounded-t-xl shadow-lg backdrop-blur-sm"
+        className="bg-surface-overlay pointer-events-auto grid w-full max-w-md grid-rows-[auto_1fr_auto] overflow-hidden rounded-t-xl shadow-lg backdrop-blur-sm"
         data-minimized={minimized ? "true" : "false"}
         data-maximized={maximized ? "true" : "false"}
       >
@@ -144,23 +144,23 @@ export function BottomSheet({
           onPointerDown={(e) => {
             dragControls.start(e);
           }}
-          class="flex shrink-0 cursor-grab items-center justify-between gap-2 px-4 py-3 active:cursor-grabbing"
+          className="flex shrink-0 cursor-grab items-center justify-between gap-2 px-4 py-3 active:cursor-grabbing"
         >
           <div
-            class="min-w-0 flex-1 select-none"
+            className="min-w-0 flex-1 select-none"
             onClick={() => {
               setSheetState((s) => (s === "minimized" ? "expanded" : "minimized"));
             }}
           >
             {title}
           </div>
-          <div class="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
               onClick={() => {
                 setSheetState((s) => (s === "minimized" ? "expanded" : "minimized"));
               }}
-              class="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted rounded-full p-1 transition-colors"
+              className="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted rounded-full p-1 transition-colors"
             >
               {minimized ? (
                 <svg
@@ -170,9 +170,9 @@ export function BottomSheet({
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
                   <polyline points="18 15 12 9 6 15" />
                 </svg>
@@ -184,9 +184,9 @@ export function BottomSheet({
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
                   <polyline points="6 9 12 15 18 9" />
                 </svg>
@@ -195,7 +195,7 @@ export function BottomSheet({
             <button
               type="button"
               onClick={onClose}
-              class="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted rounded-full p-1 transition-colors"
+              className="text-on-surface-faint hover:bg-surface-hover hover:text-on-surface-muted rounded-full p-1 transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -204,9 +204,9 @@ export function BottomSheet({
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
@@ -221,7 +221,7 @@ export function BottomSheet({
             opacity: minimized ? 0 : 1,
           }}
           transition={SPRING}
-          class="max-h-full overflow-auto overscroll-y-contain"
+          className="max-h-full overflow-auto overscroll-y-contain"
         >
           {children}
         </motion.div>
@@ -233,9 +233,9 @@ export function BottomSheet({
               opacity: minimized ? 1 : 0,
             }}
             transition={SPRING}
-            class="overflow-hidden"
+            className="overflow-hidden"
           >
-            <div class="px-4 pb-3">{minimizedBody}</div>
+            <div className="px-4 pb-3">{minimizedBody}</div>
           </motion.div>
         )}
       </motion.div>

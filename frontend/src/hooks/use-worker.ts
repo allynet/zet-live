@@ -1,5 +1,5 @@
 import type { V1Message } from "@/app/entity/v1/message";
-import type { GroupedStop } from "@/state";
+import type { GroupedStop } from "@/store";
 
 export type WorkerMessage =
   | { type: "process-message"; data: Blob }

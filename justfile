@@ -1,4 +1,4 @@
-set dotenv-load
+set dotenv-load := false
 set positional-arguments
 
 default:

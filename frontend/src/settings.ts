@@ -1,5 +1,4 @@
-import { signal, computed } from "@preact/signals";
-import { useSignalState } from "./hooks/use-signal-state";
+import { create } from "zustand";
 
 export type MapStyleId = "3d" | "3d.dark" | "flat" | "satellite";
 export type MapThemeMode = "device" | "time" | "manual";
@@ -14,7 +13,9 @@ const DEFAULTS = {
   uiThemeManual: "light" as UiTheme,
 };
 
-export type Settings = typeof DEFAULTS;
+export type Settings = typeof DEFAULTS & {
+  _settingsOpen: boolean;
+};
 
 const STORAGE_KEY = "settings";
 
@@ -38,12 +39,13 @@ function loadSettings(): Settings {
         uiThemeManual: isValidUiTheme(parsed.uiThemeManual)
           ? parsed.uiThemeManual
           : DEFAULTS.uiThemeManual,
+        _settingsOpen: false,
       };
     }
   } catch (e) {
     console.error("Failed to load settings from localStorage", e);
   }
-  return { ...DEFAULTS };
+  return { ...DEFAULTS, _settingsOpen: false };
 }
 
 function isValidMapStyle(value: unknown): value is MapStyleId {
@@ -70,17 +72,13 @@ function persist(settings: Settings) {
   }
 }
 
-const settingsSignal = signal<Settings>(loadSettings());
+export const settingsStore = create<Settings>()(() => loadSettings());
 
-export function settingSignal<T extends keyof Settings>(key: T) {
-  return computed(() => settingsSignal.value[key]);
-}
-
-export function useSetting<T extends keyof Settings>(key: T) {
-  return useSignalState(settingSignal(key));
+export function useSetting<T extends keyof Settings>(key: T): Settings[T] {
+  return settingsStore((s) => s[key]);
 }
 
 export function updateSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
-  settingsSignal.value = { ...settingsSignal.value, [key]: value };
-  persist(settingsSignal.value);
+  settingsStore.setState({ [key]: value });
+  persist(settingsStore.getState());
 }

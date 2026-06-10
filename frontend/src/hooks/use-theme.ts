@@ -1,8 +1,7 @@
-import { signal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
-import { useSignalEffect } from "@preact/signals";
+import { useEffect } from "react";
+import { create } from "zustand";
 import {
-  settingSignal,
+  settingsStore,
   type UiTheme,
   type UiThemeMode,
   type MapStyleId,
@@ -12,11 +11,6 @@ import { getTimes } from "@/utils/suncalc";
 
 const ZAGREB_LAT = 45.8;
 const ZAGREB_LNG = 16.0;
-
-const uiThemeModeSignal = settingSignal("uiThemeMode");
-const uiThemeManualSignal = settingSignal("uiThemeManual");
-const mapThemeModeSignal = settingSignal("mapThemeMode");
-const mapStyleSignal = settingSignal("mapStyle");
 
 function resolveFromDevice(): UiTheme {
   return globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -61,30 +55,36 @@ function applyTheme(theme: UiTheme) {
   }
 }
 
-const initialMapStyle = resolveMapStyle(mapThemeModeSignal.value, mapStyleSignal.value);
+function recompute() {
+  const { mapThemeMode, mapStyle, uiThemeMode, uiThemeManual } = settingsStore.getState();
+  const resolvedMapStyleId = resolveMapStyle(mapThemeMode, mapStyle);
+  const resolvedTheme = resolveTheme(uiThemeMode, uiThemeManual, resolvedMapStyleId);
+
+  themeStore.setState({ resolvedTheme, resolvedMapStyleId });
+  applyTheme(resolvedTheme);
+}
+
+type ThemeState = {
+  resolvedTheme: UiTheme;
+  resolvedMapStyleId: MapStyleId;
+};
+
+const initialMapStyle = resolveMapStyle(
+  settingsStore.getState().mapThemeMode,
+  settingsStore.getState().mapStyle,
+);
 const initialTheme = resolveTheme(
-  uiThemeModeSignal.value,
-  uiThemeManualSignal.value,
+  settingsStore.getState().uiThemeMode,
+  settingsStore.getState().uiThemeManual,
   initialMapStyle,
 );
 
-export const resolvedThemeSignal = signal<UiTheme>(initialTheme);
-export const resolvedMapStyleIdSignal = signal<MapStyleId>(initialMapStyle);
+export const themeStore = create<ThemeState>()(() => ({
+  resolvedTheme: initialTheme,
+  resolvedMapStyleId: initialMapStyle,
+}));
 
 export function useTheme() {
-  function recompute() {
-    const mapStyle = resolveMapStyle(mapThemeModeSignal.value, mapStyleSignal.value);
-    resolvedMapStyleIdSignal.value = mapStyle;
-
-    const theme = resolveTheme(uiThemeModeSignal.value, uiThemeManualSignal.value, mapStyle);
-    resolvedThemeSignal.value = theme;
-    applyTheme(theme);
-  }
-
-  useSignalEffect(() => {
-    recompute();
-  });
-
   useEffect(() => {
     recompute();
 
@@ -93,9 +93,12 @@ export function useTheme() {
 
     const interval = setInterval(recompute, 60_000);
 
+    const unsub = settingsStore.subscribe(recompute);
+
     return () => {
       mediaQuery?.removeEventListener("change", recompute);
       clearInterval(interval);
+      unsub();
     };
   }, []);
 }

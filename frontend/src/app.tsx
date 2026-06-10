@@ -7,26 +7,15 @@ import { SearchBar } from "@/components/search-bar";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Toaster } from "sonner";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { useSignalState } from "@/hooks/use-signal-state";
 import { useUrlSync } from "@/hooks/use-url-sync";
 import { useVersionCheck } from "@/hooks/use-version-check";
 import { useTheme } from "@/hooks/use-theme";
-import {
-  selectedStopSignal,
-  selectedVehicleSignal,
-  followEnabledSignal,
-  flyToTargetSignal,
-  displayedStopsSignal,
-  tripStopTimesSignal,
-  stopArrivalTimesSignal,
-} from "@/state";
+import { useStore } from "@/store";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
-import type { ComponentChildren } from "preact";
+import type { ReactNode } from "react";
 import { SettingsButton, SettingsModal } from "./components/settings-modal";
 import { useWakeLock } from "@/hooks/use-wake-lock";
-import { settingSignal } from "./settings";
-
-const wakeLockEnabledSignal = settingSignal("wakeLockEnabled");
+import { useSetting } from "./settings";
 
 export function App() {
   useWebSocket();
@@ -34,15 +23,17 @@ export function App() {
   useVersionCheck();
   useTheme();
 
-  const wakeLockEnabled = useSignalState(wakeLockEnabledSignal);
+  const wakeLockEnabled = useSetting("wakeLockEnabled");
   useWakeLock(wakeLockEnabled);
 
-  const selectedStop = useSignalState(selectedStopSignal);
-  const selectedVehicle = useSignalState(selectedVehicleSignal);
-  const displayedStops = useSignalState(displayedStopsSignal);
-  const tripStopTimes = useSignalState(tripStopTimesSignal);
-  const stopArrivalTimes = useSignalState(stopArrivalTimesSignal);
-  const followEnabled = useSignalState(followEnabledSignal);
+  const selectedStop = useStore((s) => s.selectedStop);
+  const selectedVehicle = useStore((s) =>
+    s.followingVehicleId ? (s.vehicles.get(s.followingVehicleId) ?? null) : null,
+  );
+  const displayedStops = useStore((s) => s.displayedStops);
+  const tripStopTimes = useStore((s) => s.tripStopTimes);
+  const stopArrivalTimes = useStore((s) => s.stopArrivalTimes);
+  const followEnabled = useStore((s) => s.followEnabled);
 
   const nextStopIndex = selectedVehicle?.nextStopId
     ? displayedStops.findIndex((stop) => stop.ids.includes(selectedVehicle.nextStopId!))
@@ -50,20 +41,20 @@ export function App() {
 
   const isOpen = selectedVehicle !== null || selectedStop !== null;
 
-  let sheetTitle: ComponentChildren = null;
-  let minimizedBody: ComponentChildren | undefined;
+  let sheetTitle: ReactNode = null;
+  let minimizedBody: ReactNode | undefined;
 
   if (selectedVehicle) {
     const routeTitle = selectedVehicle.getDisplayName();
     const isBus = selectedVehicle.routeId.length > 2;
     sheetTitle = (
-      <div class="flex items-center gap-2">
+      <div className="flex items-center gap-2">
         <span
-          class={`text-on-primary inline-flex items-center rounded px-1.5 py-0.5 text-xs font-bold ${isBus ? "bg-primary" : "bg-danger"}`}
+          className={`text-on-primary inline-flex items-center rounded px-1.5 py-0.5 text-xs font-bold ${isBus ? "bg-primary" : "bg-danger"}`}
         >
           {selectedVehicle.routeId}
         </span>
-        <span class="text-on-surface text-sm font-bold">{routeTitle}</span>
+        <span className="text-on-surface text-sm font-bold">{routeTitle}</span>
       </div>
     );
 
@@ -98,14 +89,14 @@ export function App() {
       );
 
       minimizedBody = (
-        <span class="text-on-surface-muted text-xs">
+        <span className="text-on-surface-muted text-xs">
           Next stop{stopLabel} arriving {timeLabel}
         </span>
       );
     }
   } else if (selectedStop) {
     sheetTitle = (
-      <span class="text-on-surface truncate text-sm font-bold">{selectedStop.name}</span>
+      <span className="text-on-surface truncate text-sm font-bold">{selectedStop.name}</span>
     );
 
     const firstArrival = stopArrivalTimes?.find((a) => a.arrivalTime != null);
@@ -114,7 +105,7 @@ export function App() {
       const minutes = Math.round(secondsUntil / 60);
       const label = minutes <= 0 ? "now" : minutes === 1 ? "1 min" : `${minutes} min`;
       minimizedBody = (
-        <span class="text-on-surface-muted text-xs">
+        <span className="text-on-surface-muted text-xs">
           Route {firstArrival.routeId} in {label}
         </span>
       );
@@ -139,14 +130,16 @@ export function App() {
             tripStopTimes={tripStopTimes}
             followEnabled={followEnabled}
             onToggleFollow={() => {
-              followEnabledSignal.value = !followEnabledSignal.value;
+              useStore.setState({ followEnabled: !useStore.getState().followEnabled });
             }}
             onLocate={() => {
               if (selectedVehicle) {
-                flyToTargetSignal.value = {
-                  longitude: selectedVehicle.lng,
-                  latitude: selectedVehicle.lat,
-                };
+                useStore.setState({
+                  flyToTarget: {
+                    longitude: selectedVehicle.lng,
+                    latitude: selectedVehicle.lat,
+                  },
+                });
               }
             }}
             onStopClick={selectStop}
@@ -162,16 +155,16 @@ export function App() {
         ) : null}
       </BottomSheet>
 
-      <div class="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2 [&>*]:pointer-events-auto">
-        <div class="flex flex-col gap-2">
+      <div className="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2 *:pointer-events-auto">
+        <div className="flex flex-col gap-2">
           <SettingsButton />
           <div>
-            <div class="absolute ml-1.5">
+            <div className="absolute ml-1.5">
               <StatusBar />
             </div>
           </div>
         </div>
-        <div class="w-full max-w-md">
+        <div className="w-full max-w-md">
           <SearchBar />
         </div>
       </div>

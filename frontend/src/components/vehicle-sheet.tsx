@@ -1,4 +1,4 @@
-import { useEffect } from "preact/hooks";
+import { useEffect } from "react";
 import { toast } from "sonner";
 import type { VehicleV1 } from "@/app/entity/v1/vehicle";
 import {
@@ -68,9 +68,9 @@ export function VehicleSheet({
   }, [vehicle.id]);
 
   return (
-    <div class="flex max-h-full flex-col">
-      <div class="max-h-full overflow-y-auto px-4 pb-3">
-        <ul class="bottom-vehicle-stop-list space-y-0.5">
+    <div className="flex max-h-full flex-col">
+      <div className="max-h-full overflow-y-auto px-4 pb-3">
+        <ul className="bottom-vehicle-stop-list space-y-0.5">
           {displayedStops.map((stop, i) => {
             const isNext = i === nextStopIndex;
             const isPassed = nextStopIndex >= 0 && i < nextStopIndex;
@@ -95,7 +95,7 @@ export function VehicleSheet({
               <li
                 key={`${stop.name}-${i}`}
                 data-is-next={isNext ? "true" : undefined}
-                class={`hover:bg-surface-hover flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm transition-colors duration-300 hover:transition-none ${
+                className={`hover:bg-surface-hover flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm transition-colors duration-300 hover:transition-none ${
                   isNext
                     ? "bg-primary-container text-on-primary-container font-bold"
                     : isPassed
@@ -106,21 +106,21 @@ export function VehicleSheet({
                   onStopClick(stop.ids);
                 }}
               >
-                <span class="flex shrink-0 items-center justify-center">
+                <span className="flex shrink-0 items-center justify-center">
                   {isNext ? (
-                    <span class="bg-primary inline-block h-2 w-2 rounded-full" />
+                    <span className="bg-primary inline-block h-2 w-2 rounded-full" />
                   ) : isPassed ? (
-                    <span class="bg-on-surface-faint inline-block h-1 w-1 rounded-full" />
+                    <span className="bg-on-surface-faint inline-block h-1 w-1 rounded-full" />
                   ) : (
-                    <span class="bg-on-surface-muted inline-block h-1.5 w-1.5 rounded-full" />
+                    <span className="bg-on-surface-muted inline-block h-1.5 w-1.5 rounded-full" />
                   )}
                 </span>
-                <span class="min-w-0 truncate">{stop.name}</span>
+                <span className="min-w-0 truncate">{stop.name}</span>
                 {showBadge && badgeText && stopArrivalDate && (
                   <time
-                    datetime={stopArrivalDate.toISOString()}
+                    dateTime={stopArrivalDate.toISOString()}
                     title={stopArrivalDate.toLocaleString()}
-                    class={`ml-auto shrink-0 rounded px-1.5 py-0.5 text-xs font-bold ${
+                    className={`ml-auto shrink-0 rounded px-1.5 py-0.5 text-xs font-bold ${
                       isNext ? "bg-primary text-on-primary" : "bg-surface-dim text-on-surface-muted"
                     }`}
                   >
@@ -132,22 +132,22 @@ export function VehicleSheet({
           })}
         </ul>
       </div>
-      <div class="border-outline flex shrink-0 items-center gap-2 border-t px-4 py-2">
-        <label class="text-on-surface-muted flex cursor-pointer items-center gap-2 text-xs font-semibold select-none">
+      <div className="border-outline flex shrink-0 items-center gap-2 border-t px-4 py-2">
+        <label className="text-on-surface-muted flex cursor-pointer items-center gap-2 text-xs font-semibold select-none">
           Follow
           <button
             role="switch"
             aria-checked={followEnabled}
             type="button"
             onClick={onToggleFollow}
-            class={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${followEnabled ? "bg-primary" : "bg-on-surface-faint"}`}
+            className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${followEnabled ? "bg-primary" : "bg-on-surface-faint"}`}
           >
             <span
-              class={`bg-surface inline-block h-5 w-5 rounded-full shadow-sm transition-transform ${followEnabled ? "translate-x-4" : "translate-x-0"}`}
+              className={`bg-surface inline-block h-5 w-5 rounded-full shadow-sm transition-transform ${followEnabled ? "translate-x-4" : "translate-x-0"}`}
             />
           </button>
         </label>
-        <div class="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => {
@@ -168,7 +168,7 @@ export function VehicleSheet({
                 );
               }
             }}
-            class="bg-surface-dim text-on-surface-muted hover:bg-surface-hover flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
+            className="bg-surface-dim text-on-surface-muted hover:bg-surface-hover flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -177,9 +177,9 @@ export function VehicleSheet({
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
               <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
               <polyline points="16 6 12 2 8 6" />
@@ -190,7 +190,7 @@ export function VehicleSheet({
           <button
             type="button"
             onClick={onLocate}
-            class="bg-surface-dim text-on-surface-muted hover:bg-surface-hover flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
+            className="bg-surface-dim text-on-surface-muted hover:bg-surface-hover flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -199,9 +199,9 @@ export function VehicleSheet({
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
               <circle cx="12" cy="12" r="10" />
               <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />

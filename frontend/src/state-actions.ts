@@ -1,36 +1,26 @@
-import {
-  followingVehicleIdSignal,
-  followEnabledSignal,
-  followingStopIdsSignal,
-  followingTripIdSignal,
-  followingTripIdsSignal,
-  followingRouteSignal,
-  selectedStopSignal,
-  displayedStopsSignal,
-  stopsGroupedSignal,
-  tripStopTimesSignal,
-  stopArrivalTimesSignal,
-  vehiclesSignal,
-  simpleStopsSignal,
-  flyToTargetSignal,
-} from "@/state";
+import { useStore } from "@/store";
 import { fetchFollowingRoute, fetchStopTrips } from "@/hooks/use-stops";
 
 export function selectVehicle(rawVehicleId: string, tripId: string, flyTo = false) {
-  followingStopIdsSignal.value = [];
-  selectedStopSignal.value = null;
-  stopArrivalTimesSignal.value = null;
-  followingTripIdsSignal.value = null;
+  useStore.setState({
+    followingStopIds: [],
+    selectedStop: null,
+    stopArrivalTimes: null,
+    followingTripIds: null,
+  });
 
   const mapId = `vehicle-${rawVehicleId}`;
-  followingVehicleIdSignal.value = mapId;
-  followingTripIdSignal.value = tripId;
-  followEnabledSignal.value = false;
+
+  useStore.setState({
+    followingVehicleId: mapId,
+    followingTripId: tripId,
+    followEnabled: false,
+  });
 
   if (flyTo) {
-    const vehicle = vehiclesSignal.value.get(mapId);
+    const vehicle = useStore.getState().vehicles.get(mapId);
     if (vehicle) {
-      flyToTargetSignal.value = { longitude: vehicle.lng, latitude: vehicle.lat };
+      useStore.setState({ flyToTarget: { longitude: vehicle.lng, latitude: vehicle.lat } });
     }
   }
 
@@ -40,30 +30,36 @@ export function selectVehicle(rawVehicleId: string, tripId: string, flyTo = fals
 }
 
 export function selectStop(stopIds: string[]) {
-  followingVehicleIdSignal.value = null;
-  followEnabledSignal.value = false;
-  followingTripIdSignal.value = null;
-  followingRouteSignal.value = null;
-  tripStopTimesSignal.value = null;
+  const state = useStore.getState();
 
-  followingStopIdsSignal.value = stopIds;
+  useStore.setState({
+    followingVehicleId: null,
+    followEnabled: false,
+    followingTripId: null,
+    followingRoute: null,
+    tripStopTimes: null,
+    followingStopIds: stopIds,
+  });
 
-  const simpleStops = simpleStopsSignal.value;
+  const simpleStops = state.simpleStops;
   const stopName = stopIds.map((id) => simpleStops[id]?.name).find(Boolean) ?? "Unknown stop";
 
-  selectedStopSignal.value = { name: stopName, ids: stopIds, routes: [] };
+  useStore.setState({
+    selectedStop: { name: stopName, ids: stopIds, routes: [] },
+  });
 
   const stops = stopIds
     .map((id) => simpleStops[id])
     .filter(Boolean)
     .map((stop) => ({ name: stop.name, lat: stop.lat, lng: stop.lng, ids: [stop.id] }));
-  displayedStopsSignal.value = stops;
+  useStore.setState({ displayedStops: stops });
 
   void fetchStopTrips(stopIds).then((tripIds) => {
     if (!tripIds) return;
-    followingTripIdsSignal.value = new Set(tripIds);
 
-    const vehicles = vehiclesSignal.value;
+    useStore.setState({ followingTripIds: new Set(tripIds) });
+
+    const vehicles = useStore.getState().vehicles;
     const routes = new Set<string>();
     for (const v of vehicles.values()) {
       if (tripIds.includes(v.tripId)) {
@@ -76,19 +72,25 @@ export function selectStop(stopIds: string[]) {
       if (!isNaN(na) && !isNaN(nb)) return na - nb;
       return a.localeCompare(b);
     });
-    selectedStopSignal.value = { name: stopName, ids: stopIds, routes: sorted };
+
+    useStore.setState({
+      selectedStop: { name: stopName, ids: stopIds, routes: sorted },
+    });
   });
 }
 
 export function clearSelection() {
-  followingVehicleIdSignal.value = null;
-  followEnabledSignal.value = false;
-  followingStopIdsSignal.value = [];
-  followingTripIdSignal.value = null;
-  followingTripIdsSignal.value = null;
-  followingRouteSignal.value = null;
-  selectedStopSignal.value = null;
-  displayedStopsSignal.value = stopsGroupedSignal.value;
-  tripStopTimesSignal.value = null;
-  stopArrivalTimesSignal.value = null;
+  const { stopsGrouped } = useStore.getState();
+  useStore.setState({
+    followingVehicleId: null,
+    followEnabled: false,
+    followingStopIds: [],
+    followingTripId: null,
+    followingTripIds: null,
+    followingRoute: null,
+    selectedStop: null,
+    displayedStops: stopsGrouped,
+    tripStopTimes: null,
+    stopArrivalTimes: null,
+  });
 }

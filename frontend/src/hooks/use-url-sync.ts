@@ -1,30 +1,21 @@
-import { useRef, useEffect, useCallback } from "preact/hooks";
-import { useSignalEffect, effect } from "@preact/signals";
-import {
-  followingVehicleIdSignal,
-  followEnabledSignal,
-  followingTripIdSignal,
-  followingStopIdsSignal,
-  simpleStopsSignal,
-} from "@/state";
+import { useRef, useEffect, useCallback } from "react";
+import { useStore } from "@/store";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
 
 const DEBOUNCE_MS = 300;
 
 function buildUrlParams(): string {
+  const { followingVehicleId, followingTripId, followingStopIds, followEnabled } =
+    useStore.getState();
   const params = new URLSearchParams();
 
-  const vehicleMapId = followingVehicleIdSignal.value;
-  const tripId = followingTripIdSignal.value;
-  const stopIds = followingStopIdsSignal.value;
-
-  if (vehicleMapId) {
-    const rawId = vehicleMapId.replace(/^vehicle-/, "");
+  if (followingVehicleId) {
+    const rawId = followingVehicleId.replace(/^vehicle-/, "");
     params.set("vehicle", rawId);
-    if (tripId) params.set("trip", tripId);
-    if (followEnabledSignal.value) params.set("follow", "1");
-  } else if (stopIds.length > 0) {
-    for (const id of stopIds) {
+    if (followingTripId) params.set("trip", followingTripId);
+    if (followEnabled) params.set("follow", "1");
+  } else if (followingStopIds.length > 0) {
+    for (const id of followingStopIds) {
       params.append("stop", id);
     }
   }
@@ -41,7 +32,7 @@ function applyUrlParams(params: URLSearchParams) {
   if (vehicleParam) {
     selectVehicle(vehicleParam, tripParam ?? "");
     if (followParam === "1") {
-      followEnabledSignal.value = true;
+      useStore.setState({ followEnabled: true });
     }
   } else if (stopParams.length > 0) {
     selectStop(stopParams);
@@ -55,6 +46,11 @@ export function useUrlSync() {
   const initializedRef = useRef(false);
   const debounceRef = useRef<number | null>(null);
 
+  const followingVehicleId = useStore((s) => s.followingVehicleId);
+  const followingTripId = useStore((s) => s.followingTripId);
+  const followingStopIds = useStore((s) => s.followingStopIds);
+  const followEnabled = useStore((s) => s.followEnabled);
+
   const syncUrl = useCallback((push: boolean) => {
     const newSearch = buildUrlParams();
     const targetPath = newSearch
@@ -67,16 +63,7 @@ export function useUrlSync() {
     }
   }, []);
 
-  useSignalEffect(() => {
-    const _v = followingVehicleIdSignal.value;
-    const _t = followingTripIdSignal.value;
-    const _s = followingStopIdsSignal.value;
-    const _f = followEnabledSignal.value;
-    void _v;
-    void _t;
-    void _s;
-    void _f;
-
+  useEffect(() => {
     if (!initializedRef.current) return;
     if (isRestoringRef.current) return;
 
@@ -90,7 +77,7 @@ export function useUrlSync() {
       debounceRef.current = null;
       syncUrl(true);
     }, DEBOUNCE_MS);
-  });
+  }, [followingVehicleId, followingTripId, followingStopIds, followEnabled, syncUrl]);
 
   useEffect(() => {
     return () => {
@@ -113,6 +100,8 @@ export function useUrlSync() {
     };
   }, [handlePopState]);
 
+  const simpleStops = useStore((s) => s.simpleStops);
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const vehicleParam = params.get("vehicle");
@@ -121,26 +110,22 @@ export function useUrlSync() {
 
     if (vehicleParam) {
       const follow = params.get("follow") === "1";
-      const dispose = effect(() => {
-        if (Object.keys(simpleStopsSignal.value).length === 0) return;
+      if (Object.keys(simpleStops).length > 0) {
         isRestoringRef.current = true;
         selectVehicle(vehicleParam, tripParam ?? "");
         if (follow) {
-          followEnabledSignal.value = true;
+          useStore.setState({ followEnabled: true });
         }
         isRestoringRef.current = false;
-        dispose();
-      });
+      }
     } else if (stopParams.length > 0) {
-      const dispose = effect(() => {
-        if (Object.keys(simpleStopsSignal.value).length === 0) return;
+      if (Object.keys(simpleStops).length > 0) {
         isRestoringRef.current = true;
         selectStop(stopParams);
         isRestoringRef.current = false;
-        dispose();
-      });
+      }
     }
 
     initializedRef.current = true;
-  }, []);
+  }, [simpleStops]);
 }

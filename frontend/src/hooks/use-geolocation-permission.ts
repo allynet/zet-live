@@ -1,4 +1,4 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect } from "react";
 
 export type GeolocationPermissionState = "unavailable" | "denied" | "prompt" | "granted";
 
