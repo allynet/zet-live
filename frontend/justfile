@@ -10,8 +10,11 @@ build:
 dev:
     bun run dev
 
-lint: type-check
-    bun run lint:fix
+[parallel]
+lint: type-check _lint
+
+_lint:
+    bun run lint
 
 lint-check:
     bun run lint

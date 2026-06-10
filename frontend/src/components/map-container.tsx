@@ -405,6 +405,7 @@ export function MapContainer() {
           zoom: 12,
         }}
         hash
+        // @ts-expect-error antialias exists in maplibre-gl but not in mapbox-gl types
         antialias
         interactiveLayerIds={["route-stops-label", "vehicle-markers"]}
         onClick={handleClick}
@@ -412,6 +413,7 @@ export function MapContainer() {
         onDragStart={onDragStart}
         className="h-full w-full"
       >
+        {/* @ts-expect-error visualizeZoom exists in maplibre-gl but not in mapbox-gl types */}
         <NavigationControl visualizeZoom visualizePitch />
 
         <GeolocateControl

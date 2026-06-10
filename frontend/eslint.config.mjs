@@ -50,6 +50,15 @@ export default tseslint.config(
       "@typescript-eslint/restrict-template-expressions": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/no-unnecessary-condition": "off",
+      "@typescript-eslint/ban-ts-comment": [
+        "error",
+        {
+          "ts-expect-error": "allow-with-description",
+        },
+      ],
+
+      eqeqeq: ["error", "always"],
+      curly: ["error", "all"],
     },
   },
   prettier,

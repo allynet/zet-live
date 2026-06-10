@@ -58,7 +58,7 @@ export function App() {
       </div>
     );
 
-    if (selectedVehicle.nextStopArrivalTime != null) {
+    if (selectedVehicle.nextStopArrivalTime !== null) {
       const untilDate = new Date(selectedVehicle.nextStopArrivalTime * 1000);
       const secondsUntil = selectedVehicle.nextStopArrivalTime - Date.now() / 1000;
       const minutes = Math.round(secondsUntil / 60);
@@ -99,7 +99,7 @@ export function App() {
       <span className="text-on-surface truncate text-sm font-bold">{selectedStop.name}</span>
     );
 
-    const firstArrival = stopArrivalTimes?.find((a) => a.arrivalTime != null);
+    const firstArrival = stopArrivalTimes?.find((a) => a.arrivalTime !== null);
     if (firstArrival) {
       const secondsUntil = firstArrival.arrivalTime! - Date.now() / 1000;
       const minutes = Math.round(secondsUntil / 60);

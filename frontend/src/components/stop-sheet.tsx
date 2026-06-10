@@ -24,23 +24,23 @@ export function StopSheet({ arrivals, onArrivalClick }: Props) {
 
   for (const [, list] of grouped) {
     list.sort((a, b) => {
-      if (a.arrivalTime == null && b.arrivalTime == null) return 0;
-      if (a.arrivalTime == null) return 1;
-      if (b.arrivalTime == null) return -1;
+      if (a.arrivalTime === null && b.arrivalTime === null) return 0;
+      if (a.arrivalTime === null) return 1;
+      if (b.arrivalTime === null) return -1;
       return a.arrivalTime - b.arrivalTime;
     });
   }
 
   const sortedGroups = [...grouped.entries()].sort(([, a], [, b]) => {
-    const aMin = a.find((x) => x.arrivalTime != null)?.arrivalTime ?? Infinity;
-    const bMin = b.find((x) => x.arrivalTime != null)?.arrivalTime ?? Infinity;
+    const aMin = a.find((x) => x.arrivalTime !== null)?.arrivalTime ?? Infinity;
+    const bMin = b.find((x) => x.arrivalTime !== null)?.arrivalTime ?? Infinity;
     return aMin - bMin;
   });
 
   return (
     <div className="px-4 pb-3">
       <div className="space-y-1">
-        {arrivals == null ? (
+        {arrivals === null ? (
           <span className="text-on-surface-faint text-xs italic">Loading arrivals...</span>
         ) : sortedGroups.length === 0 ? (
           <span className="text-on-surface-faint text-xs italic">No active vehicles</span>
@@ -56,7 +56,7 @@ export function StopSheet({ arrivals, onArrivalClick }: Props) {
                 </span>
                 <div className="flex flex-wrap gap-1">
                   {times.map((t) =>
-                    t.arrivalTime != null ? (
+                    t.arrivalTime !== null ? (
                       <span
                         key={t.vehicleId}
                         className="bg-surface-dim text-on-surface-variant active:bg-surface-hover cursor-pointer rounded px-1.5 py-0.5 text-xs font-medium"

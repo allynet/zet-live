@@ -77,7 +77,7 @@ export function VehicleSheet({
             const isUpcoming = nextStopIndex >= 0 && i > nextStopIndex;
 
             const stopArrivalTime = tripStopTimes
-              ? (stop.ids.map((id) => tripStopTimes.get(id)).find((t) => t != null) ?? null)
+              ? (stop.ids.map((id) => tripStopTimes.get(id)).find((t) => t !== null) ?? null)
               : null;
             const stopArrivalDate = stopArrivalTime ? new Date(stopArrivalTime * 1000) : null;
 
@@ -87,7 +87,7 @@ export function VehicleSheet({
 
             const badgeText = isNext
               ? arrivalLabel
-              : stopArrivalTime != null
+              : stopArrivalTime !== null
                 ? formatMinutesFromNow(stopArrivalTime)
                 : null;
 

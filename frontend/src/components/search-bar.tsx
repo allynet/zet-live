@@ -195,7 +195,7 @@ export function SearchBar() {
   }, []);
 
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Escape") {
         e.preventDefault();
         setQuery("");
