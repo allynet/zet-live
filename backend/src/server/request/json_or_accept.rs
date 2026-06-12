@@ -10,6 +10,8 @@ use prost::bytes::{BufMut, BytesMut};
 use reqwest::{StatusCode, header};
 use serde::Serialize;
 
+use crate::server::error::ApiError;
+
 static APPLICATION_CBOR: LazyLock<Mime> =
     LazyLock::new(|| Mime::from_str("application/cbor").expect("Invalid MIME type"));
 pub struct JsonOrAccept<T>(pub T, pub HeaderMap);
@@ -30,10 +32,7 @@ where
             .unwrap_or("application/json")
             .parse::<Accept>();
         let Ok(accept) = accept else {
-            return (
-                StatusCode::NOT_ACCEPTABLE,
-                [(header::CONTENT_TYPE, HeaderValue::from_static("text/plain"))],
-            )
+            return ApiError::with_status(StatusCode::NOT_ACCEPTABLE, "Not Acceptable")
                 .into_response();
         };
 
@@ -67,12 +66,7 @@ where
             buf.into_inner().freeze(),
         )
             .into_response(),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            [(header::CONTENT_TYPE, HeaderValue::from_static("text/plain"))],
-            err.to_string(),
-        )
-            .into_response(),
+        Err(err) => ApiError::internal(err.to_string()).into_response(),
     }
 }
 
@@ -90,11 +84,6 @@ where
             v,
         )
             .into_response(),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            [(header::CONTENT_TYPE, HeaderValue::from_static("text/plain"))],
-            err.to_string(),
-        )
-            .into_response(),
+        Err(err) => ApiError::internal(err.to_string()).into_response(),
     }
 }

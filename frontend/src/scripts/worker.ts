@@ -1,21 +1,8 @@
 import { v1MessageSchema, type V1Message } from "../app/entity/v1/message";
+import type { StopData, GroupedStop, StopsUpdateResponse } from "../app/entity/shared";
 import { decode as decodeCbor } from "cbor2";
 
 const DEBUG = (import.meta.env.VITE_DEBUG as string | undefined) === "true";
-
-type StopData = {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-};
-
-type GroupedStop = {
-  name: string;
-  lat: number;
-  lng: number;
-  ids: string[];
-};
 
 type StopGroup = {
   stops: StopData[];
@@ -24,20 +11,6 @@ type StopGroup = {
   minLng: number;
   maxLng: number;
 };
-
-export type StopsUpdateResponse = {
-  type: "stops-update";
-  stops?: StopData[];
-  bounds?: [[number, number], [number, number]];
-  grouped: GroupedStop[];
-};
-
-export type WorkerResponse =
-  | {
-      type: "processed-message";
-      data: V1Message;
-    }
-  | StopsUpdateResponse;
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
 
@@ -225,6 +198,12 @@ async function fetchAndProcessStops(): Promise<boolean> {
         accept: "application/cbor,application/json",
       },
     });
+
+    if (!response.ok) {
+      console.error("[WORKER]", "Stops fetch failed with status", response.status);
+      return false;
+    }
+
     const buffer = new Uint8Array(await response.arrayBuffer());
     const data = decodeCbor(buffer);
     const validated = v1MessageSchema.safeParse(data);

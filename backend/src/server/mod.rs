@@ -4,6 +4,7 @@ use listenfd::ListenFd;
 use tokio::net::TcpListener;
 use tracing::{debug, error, info};
 
+pub mod error;
 mod request;
 mod routes;
 

@@ -1,31 +1,10 @@
 import type { V1Message } from "@/app/entity/v1/message";
-import type { GroupedStop } from "@/store";
+import type { StopsUpdateResponse, WorkerResponse } from "@/app/entity/shared";
 
 export type WorkerMessage =
   | { type: "process-message"; data: Blob }
   | { type: "start-fetching-stops" }
   | { type: "stop-fetching-stops" };
-
-export type StopData = {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-};
-
-export type StopsUpdateResponse = {
-  type: "stops-update";
-  stops?: StopData[];
-  bounds?: [[number, number], [number, number]];
-  grouped: GroupedStop[];
-};
-
-export type WorkerResponse =
-  | {
-      type: "processed-message";
-      data: V1Message;
-    }
-  | StopsUpdateResponse;
 
 export function postWorkerMessage(worker: Worker, data: Blob) {
   const msg: WorkerMessage = { type: "process-message", data };
@@ -60,4 +39,4 @@ export function terminateSharedWorker() {
   }
 }
 
-export type { V1Message };
+export type { V1Message, StopsUpdateResponse, WorkerResponse };

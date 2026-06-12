@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use axum::{extract::Path, http::HeaderMap, response::IntoResponse};
 use axum_extra::extract::Query;
-use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use sqlx::{AssertSqlSafe, FromRow};
 use tracing::{debug, error};
@@ -11,7 +10,7 @@ use crate::{
     database::Database,
     entity::util::versioned::Versioned,
     proto::gtfs_schedule::data::{Route, Shape, SimpleStop, Trip},
-    server::request::JsonOrAccept,
+    server::{error::ApiError, request::JsonOrAccept},
 };
 
 async fn get_base_midnight() -> i64 {
@@ -101,10 +100,10 @@ pub async fn get_route(headers: HeaderMap, Path(id): Path<String>) -> impl IntoR
 
             JsonOrAccept(Versioned::new(1, route), headers).into_response()
         }
-        Ok(None) => (StatusCode::NOT_FOUND, "Route not found").into_response(),
+        Ok(None) => ApiError::not_found("Route not found").into_response(),
         Err(e) => {
             error!(%e, ?id, "Failed to get route");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get route").into_response()
+            ApiError::internal("Failed to get route").into_response()
         }
     }
 }
@@ -170,10 +169,10 @@ pub async fn get_stop(headers: HeaderMap, Path(id): Path<String>) -> impl IntoRe
 
             JsonOrAccept(Versioned::new(1, stop), headers).into_response()
         }
-        Ok(None) => (StatusCode::NOT_FOUND, "Stop not found").into_response(),
+        Ok(None) => ApiError::not_found("Stop not found").into_response(),
         Err(e) => {
             error!(%e, ?id, "Failed to get stop");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get stop").into_response()
+            ApiError::internal("Failed to get stop").into_response()
         }
     }
 }
@@ -278,11 +277,7 @@ pub async fn get_stop_trips(
         Ok(rows) => rows,
         Err(e) => {
             error!(%e, "Failed to get stop trips");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to get stop trips",
-            )
-                .into_response();
+            return ApiError::internal("Failed to get stop trips").into_response();
         }
     };
 
@@ -456,7 +451,7 @@ pub async fn get_trip(headers: HeaderMap, Path(id): Path<String>) -> impl IntoRe
         Ok(trip) => trip,
         Err(e) => {
             error!(%e, ?id, "Failed to get trip");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get trip").into_response();
+            return ApiError::internal("Failed to get trip").into_response();
         }
     };
 
@@ -515,10 +510,10 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
 
         match t {
             Ok(Some(trip)) => trip,
-            Ok(None) => return (StatusCode::NOT_FOUND, "Trip not found").into_response(),
+            Ok(None) => return ApiError::not_found("Trip not found").into_response(),
             Err(e) => {
                 error!(%e, ?trip_id, "Failed to get trip");
-                return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get trip").into_response();
+                return ApiError::internal("Failed to get trip").into_response();
             }
         }
     };
@@ -619,7 +614,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
         Ok(stop_ids) => stop_ids,
         Err(e) => {
             error!(%e, ?trip_id, "Failed to get stop ids");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get stop ids").into_response();
+            return ApiError::internal("Failed to get stop ids").into_response();
         }
     };
 
@@ -628,7 +623,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
             Ok(shapes) => shapes,
             Err(e) => {
                 error!(%e, ?trip_id, "Failed to get shapes");
-                return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get shapes").into_response();
+                return ApiError::internal("Failed to get shapes").into_response();
             }
         };
 
@@ -867,10 +862,10 @@ pub async fn get_shape(headers: HeaderMap, Path(id): Path<String>) -> impl IntoR
 
     match shape {
         Ok(Some(shape)) => JsonOrAccept(Versioned::new(1, shape), headers).into_response(),
-        Ok(None) => (StatusCode::NOT_FOUND, "Shape not found").into_response(),
+        Ok(None) => ApiError::not_found("Shape not found").into_response(),
         Err(e) => {
             error!(%e, "Failed to get shape");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get shape").into_response()
+            ApiError::internal("Failed to get shape").into_response()
         }
     }
 }
@@ -885,15 +880,15 @@ pub async fn get_shape_for_trip(headers: HeaderMap, Path(id): Path<String>) -> i
 
     let trip = match trip {
         Ok(Some(trip)) => trip,
-        Ok(None) => return (StatusCode::NOT_FOUND, "Trip not found").into_response(),
+        Ok(None) => return ApiError::not_found("Trip not found").into_response(),
         Err(e) => {
             error!(%e, ?id, "Failed to get trip");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get trip").into_response();
+            return ApiError::internal("Failed to get trip").into_response();
         }
     };
 
     let Some(shape_id) = trip.shape_id else {
-        return (StatusCode::NOT_FOUND, "Trip has no shape").into_response();
+        return ApiError::not_found("Trip has no shape").into_response();
     };
 
     let shapes = Database::logged(
@@ -916,7 +911,7 @@ pub async fn get_shape_for_trip(headers: HeaderMap, Path(id): Path<String>) -> i
         Ok(shapes) => shapes,
         Err(e) => {
             error!(%e, "Failed to get shape");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get shape").into_response();
+            return ApiError::internal("Failed to get shape").into_response();
         }
     };
 

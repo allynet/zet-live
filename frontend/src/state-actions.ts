@@ -7,6 +7,8 @@ export function selectVehicle(rawVehicleId: string, tripId: string, flyTo = fals
     selectedStop: null,
     stopArrivalTimes: null,
     followingTripIds: null,
+    tripFetchError: null,
+    stopFetchError: null,
   });
 
   const mapId = `vehicle-${rawVehicleId}`;
@@ -39,6 +41,8 @@ export function selectStop(stopIds: string[]) {
     followingRoute: null,
     tripStopTimes: null,
     followingStopIds: stopIds,
+    tripFetchError: null,
+    stopFetchError: null,
   });
 
   const simpleStops = state.simpleStops;
@@ -92,5 +96,7 @@ export function clearSelection() {
     displayedStops: stopsGrouped,
     tripStopTimes: null,
     stopArrivalTimes: null,
+    tripFetchError: null,
+    stopFetchError: null,
   });
 }

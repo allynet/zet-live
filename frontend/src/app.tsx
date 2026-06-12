@@ -34,6 +34,7 @@ export function App() {
   const tripStopTimes = useStore((s) => s.tripStopTimes);
   const stopArrivalTimes = useStore((s) => s.stopArrivalTimes);
   const followEnabled = useStore((s) => s.followEnabled);
+  const tripFetchError = useStore((s) => s.tripFetchError);
 
   const nextStopIndex = selectedVehicle?.nextStopId
     ? displayedStops.findIndex((stop) => stop.ids.includes(selectedVehicle.nextStopId!))
@@ -128,6 +129,7 @@ export function App() {
             displayedStops={displayedStops}
             nextStopIndex={nextStopIndex}
             tripStopTimes={tripStopTimes}
+            tripFetchError={tripFetchError}
             followEnabled={followEnabled}
             onToggleFollow={() => {
               useStore.setState({ followEnabled: !useStore.getState().followEnabled });

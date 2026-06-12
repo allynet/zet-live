@@ -3,6 +3,7 @@ use std::time::Duration;
 use axum::{
     Router,
     http::{HeaderValue, Request, Response},
+    response::IntoResponse,
 };
 use axum_client_ip::ClientIpSource;
 use reqwest::{StatusCode, header};
@@ -16,6 +17,8 @@ use tower_http::{
     trace::TraceLayer,
 };
 use tracing::{Span, debug, field, info};
+
+use crate::server::error::ApiError;
 
 mod frontend;
 mod v1;
@@ -50,12 +53,7 @@ where
         .layer(CatchPanicLayer::custom(|err| {
             debug!(?err, "Panic caught in request handling");
 
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(axum::body::Body::from(format!(
-                    "Internal Server Error: {err:?}"
-                )))
-                .expect("Failed to build response")
+            ApiError::internal(format!("Internal Server Error: {err:?}")).into_response()
         }))
         .layer(
             ServiceBuilder::new()

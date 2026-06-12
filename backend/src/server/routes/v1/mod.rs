@@ -126,12 +126,10 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 }
 
                 for trip_id in &current_feed_trip_ids {
-                    if let Err(e) = Database::logged(
-                        "insert_live_trip",
+                    if let Err(e) =
                         sqlx::query!("INSERT INTO live_trips (trip_id) VALUES (?)", trip_id)
-                            .execute(&mut *tx),
-                    )
-                    .await
+                            .execute(&mut *tx)
+                            .await
                     {
                         error!(?e, "Failed to insert live trip");
                         return;

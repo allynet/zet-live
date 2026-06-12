@@ -20,6 +20,7 @@ type Props = {
   displayedStops: { name: string; ids: string[] }[];
   nextStopIndex: number;
   tripStopTimes: Map<string, number> | null;
+  tripFetchError: string | null;
   followEnabled: boolean;
   onToggleFollow: () => void;
   onLocate: () => void;
@@ -31,6 +32,7 @@ export function VehicleSheet({
   displayedStops,
   nextStopIndex,
   tripStopTimes,
+  tripFetchError,
   followEnabled,
   onToggleFollow,
   onLocate,
@@ -69,7 +71,28 @@ export function VehicleSheet({
 
   return (
     <div className="flex max-h-full flex-col">
-      <div className="max-h-full overflow-y-auto px-4 pb-3">
+      <div className="flex max-h-full flex-col gap-2 overflow-y-auto px-4 pb-3">
+        {tripFetchError ? (
+          <div className="mx-auto flex w-full items-center justify-center gap-1.5 rounded bg-amber-100 px-2.5 py-1.5 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="shrink-0"
+            >
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span className="whitespace-pre-wrap">{tripFetchError}</span>
+          </div>
+        ) : null}
         <ul className="bottom-vehicle-stop-list space-y-0.5">
           {displayedStops.map((stop, i) => {
             const isNext = i === nextStopIndex;

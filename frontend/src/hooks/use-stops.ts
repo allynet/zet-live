@@ -1,6 +1,6 @@
 import type { V1Message } from "@/app/entity/v1/message";
 import {
-  parseResponse,
+  apiFetch,
   tripInfoResponseSchema,
   tripStopTimesResponseSchema,
   stopArrivalsResponseSchema,
@@ -10,7 +10,8 @@ import { VehicleV1 } from "@/app/entity/v1/vehicle";
 import { StopV1 } from "@/app/entity/v1/stop";
 import { API_URL } from "@/app/consts";
 import { useStore, type VehicleLocationPair, updateMaxBounds } from "@/store";
-import type { StopsUpdateResponse } from "./use-worker";
+import type { StopsUpdateResponse } from "@/app/entity/shared";
+import { toast } from "sonner";
 
 export function handleStopsUpdate(response: StopsUpdateResponse) {
   if (response.stops) {
@@ -106,18 +107,46 @@ export async function fetchFollowingRoute(tripId: string) {
   followingRouteAbort = new AbortController();
   const { signal } = followingRouteAbort;
 
-  const raw = await fetch(`${API_URL}/v1/schedule/trip-info/${tripId}`, { signal })
-    .then((x) => x.json())
-    .catch(() => null);
-  const shape = parseResponse(raw, tripInfoResponseSchema);
+  const result = await apiFetch(
+    `${API_URL}/v1/schedule/trip-info/${tripId}`,
+    tripInfoResponseSchema,
+    { signal },
+  );
 
   if (signal.aborted) return;
 
-  if (!shape) {
-    console.error("Shape not found for trip", tripId);
+  if (result.error) {
+    const { error } = result.error;
+    const isNotFound = result.error.status === 404;
+
+    if (!isNotFound) {
+      toast.error("Failed to load trip info", { description: error });
+    }
+
+    const state = useStore.getState();
+    const vehicle = state.followingVehicleId ? state.vehicles.get(state.followingVehicleId) : null;
+
+    let fallbackStops: { name: string; lat: number; lng: number; ids: string[] }[] = [];
+
+    if (vehicle?.nextStopId) {
+      const stop = state.simpleStops[vehicle.nextStopId];
+      if (stop) {
+        fallbackStops = [{ name: stop.name, lat: stop.lat, lng: stop.lng, ids: [stop.id] }];
+      }
+    }
+
+    useStore.setState({
+      followingRoute: null,
+      displayedStops: fallbackStops,
+      tripStopTimes: null,
+      tripFetchError: isNotFound
+        ? "Could not find full stop list.\nThis is a temporary issue."
+        : error,
+    });
     return;
   }
 
+  const shape = result.data;
   const simpleStops = useStore.getState().simpleStops;
   const stops = shape.d.stopIds.map((id) => simpleStops[id]).filter(Boolean);
 
@@ -137,6 +166,7 @@ export async function fetchFollowingRoute(tripId: string) {
       ids: [stop.id],
     })),
     tripStopTimes: map,
+    tripFetchError: null,
   });
 }
 
@@ -151,17 +181,23 @@ async function refreshTripStopTimes(tripId: string) {
   followingRouteRefreshAbort = new AbortController();
   const { signal } = followingRouteRefreshAbort;
 
-  const raw = await fetch(`${API_URL}/v1/schedule/trip-info/${tripId}`, { signal })
-    .then((x) => x.json())
-    .catch(() => null);
-  const shape = parseResponse(raw, tripStopTimesResponseSchema);
+  const result = await apiFetch(
+    `${API_URL}/v1/schedule/trip-info/${tripId}`,
+    tripStopTimesResponseSchema,
+    { signal },
+  );
 
   if (signal.aborted) return;
 
-  if (!shape) return;
+  if (result.error) {
+    if (result.error.status !== 404) {
+      console.error("Failed to refresh trip stop times:", result.error.error);
+    }
+    return;
+  }
 
   const map = new Map<string, number>();
-  for (const s of shape.d.stopTimes) {
+  for (const s of result.data.d.stopTimes) {
     if (s.arrivalTime !== null) {
       map.set(s.stopId, s.arrivalTime);
     }
@@ -178,16 +214,25 @@ async function refreshStopArrivalTimes(stopIds: string[]) {
   for (const stopId of stopIds) {
     queryParams.append("stop", stopId);
   }
-  const raw = await fetch(`${API_URL}/v1/schedule/stop-trips?${queryParams.toString()}`, {
-    signal,
-  })
-    .then((x) => x.json())
-    .catch(() => null);
-  const res = parseResponse(raw, stopArrivalsResponseSchema);
+
+  const result = await apiFetch(
+    `${API_URL}/v1/schedule/stop-trips?${queryParams.toString()}`,
+    stopArrivalsResponseSchema,
+    { signal },
+  );
 
   if (signal.aborted) return;
 
-  useStore.setState({ stopArrivalTimes: res?.d.arrivalTimes ?? null });
+  if (result.error) {
+    if (result.error.status === 404) {
+      useStore.setState({ stopFetchError: result.error.error });
+    } else {
+      toast.error("Failed to refresh arrivals", { description: result.error.error });
+    }
+    return;
+  }
+
+  useStore.setState({ stopArrivalTimes: result.data.d.arrivalTimes, stopFetchError: null });
 }
 
 export async function fetchStopTrips(stopIds: string[]) {
@@ -200,16 +245,28 @@ export async function fetchStopTrips(stopIds: string[]) {
   for (const stopId of stopIds) {
     queryParams.append("stop", stopId);
   }
-  const raw = await fetch(`${API_URL}/v1/schedule/stop-trips?${queryParams.toString()}`, {
-    signal,
-  })
-    .then((x) => x.json())
-    .catch(() => null);
-  const trips = parseResponse(raw, stopTripsResponseSchema);
+
+  const result = await apiFetch(
+    `${API_URL}/v1/schedule/stop-trips?${queryParams.toString()}`,
+    stopTripsResponseSchema,
+    { signal },
+  );
 
   if (signal.aborted) return null;
 
-  useStore.setState({ stopArrivalTimes: trips?.d.arrivalTimes ?? null });
+  if (result.error) {
+    if (result.error.status === 404) {
+      useStore.setState({ stopFetchError: result.error.error });
+    } else {
+      toast.error("Failed to load stop trips", { description: result.error.error });
+    }
+    return null;
+  }
 
-  return trips?.d.stopTrips ?? null;
+  useStore.setState({
+    stopArrivalTimes: result.data.d.arrivalTimes,
+    stopFetchError: null,
+  });
+
+  return result.data.d.stopTrips;
 }
