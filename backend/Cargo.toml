@@ -55,9 +55,9 @@ default_trait_access = "allow"
 
 [profile.release]
 strip = true
-opt-level = "z"
+opt-level = 3
 lto = "thin"
-# panic = "abort"
+panic = "abort"
 codegen-units = 1
 
 [build-dependencies]
