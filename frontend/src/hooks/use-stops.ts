@@ -11,6 +11,7 @@ import { StopV1 } from "@/app/entity/v1/stop";
 import { API_URL } from "@/app/consts";
 import { useStore, type VehicleLocationPair, updateMaxBounds } from "@/store";
 import type { StopsUpdateResponse } from "@/app/entity/shared";
+import { buildRouteDisplayedStops, patchTripStopTimesFromVehicle } from "@/app/trip-stop-times";
 import { toast } from "sonner";
 
 export function handleStopsUpdate(response: StopsUpdateResponse) {
@@ -73,6 +74,20 @@ export function processMessage(message: V1Message) {
       maxLng = Math.max(maxLng, vehicle.lng);
     }
 
+    const state = useStore.getState();
+    let tripStopTimes = state.tripStopTimes;
+
+    if (state.followingTripId && state.followingVehicleId) {
+      const vehicle = newMap.get(state.followingVehicleId);
+      if (vehicle && vehicle.tripId === state.followingTripId) {
+        tripStopTimes = patchTripStopTimesFromVehicle(
+          tripStopTimes,
+          vehicle.nextStopSequence,
+          vehicle.nextStopArrivalTime,
+        );
+      }
+    }
+
     useStore.setState({
       vehicles: newMap,
       vehicleBounds: [
@@ -80,6 +95,7 @@ export function processMessage(message: V1Message) {
         [maxLng, maxLat],
       ],
       deltaMoveLines: locationPairs,
+      ...(tripStopTimes !== state.tripStopTimes ? { tripStopTimes } : {}),
     });
     updateMaxBounds();
 
@@ -148,24 +164,12 @@ export async function fetchFollowingRoute(tripId: string) {
 
   const shape = result.data;
   const simpleStops = useStore.getState().simpleStops;
-  const stops = shape.d.stopIds.map((id) => simpleStops[id]).filter(Boolean);
-
-  const map = new Map<string, number>();
-  for (const s of shape.d.stopTimes) {
-    if (s.arrivalTime !== null) {
-      map.set(s.stopId, s.arrivalTime);
-    }
-  }
+  const tripStopTimes = shape.d.stopTimes;
 
   useStore.setState({
     followingRoute: shape.d.route,
-    displayedStops: stops.map((stop) => ({
-      name: stop.name,
-      lat: stop.lat,
-      lng: stop.lng,
-      ids: [stop.id],
-    })),
-    tripStopTimes: map,
+    displayedStops: buildRouteDisplayedStops(tripStopTimes, simpleStops),
+    tripStopTimes,
     tripFetchError: null,
   });
 }
@@ -196,13 +200,7 @@ async function refreshTripStopTimes(tripId: string) {
     return;
   }
 
-  const map = new Map<string, number>();
-  for (const s of result.data.d.stopTimes) {
-    if (s.arrivalTime !== null) {
-      map.set(s.stopId, s.arrivalTime);
-    }
-  }
-  useStore.setState({ tripStopTimes: map });
+  useStore.setState({ tripStopTimes: result.data.d.stopTimes });
 }
 
 async function refreshStopArrivalTimes(stopIds: string[]) {

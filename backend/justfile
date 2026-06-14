@@ -2,7 +2,7 @@ set dotenv-load
 set positional-arguments
 
 rustflags := "-C target-feature=+crt-static"
-rust_target := "x86_64-unknown-linux-gnu"
+rust_target := "x86_64-unknown-linux-musl"
 
 default:
     @just --list
@@ -24,7 +24,7 @@ dev-watch *args:
         -- \
           just dev-run "$@"
 
-dev-run *args:
+dev-run *args: migrations-run
     RUSTFLAGS='{{ rustflags }}' \
     cargo run \
         --target "{{ rust_target }}" \

@@ -12,6 +12,7 @@ export type GroupedStop = {
   lat: number;
   lng: number;
   ids: string[];
+  stopSequence?: number;
 };
 
 export type StopsUpdateResponse = {

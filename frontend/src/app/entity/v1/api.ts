@@ -10,6 +10,7 @@ const stopTimeSchema = z.object({
 
 const stopTimeSimpleSchema = z.object({
   stopId: z.string(),
+  stopSequence: z.number(),
   arrivalTime: z.number().nullable(),
 });
 
@@ -18,7 +19,10 @@ export const stopArrivalTimeSchema = z.object({
   vehicleId: z.string(),
   routeId: z.string(),
   stopId: z.string(),
-  arrivalTime: z.number().nullable(),
+  arrivalTime: z
+    .number()
+    .nullable()
+    .transform((val) => (val === null ? null : new Date(val * 1000))),
 });
 
 export const apiErrorSchema = z.object({
@@ -57,7 +61,10 @@ export const stopTripsResponseSchema = z.object({
 
 export type ApiResponse<T> = { data: T; error: null } | { data: null; error: ApiError };
 
-export function parseResponse<T>(data: unknown, schema: z.ZodType<T>): T | null {
+export function parseResponse<T>(
+  data: unknown,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+): T | null {
   const result = schema.safeParse(data);
   if (!result.success) {
     console.error("API response validation failed", result.error);
@@ -68,7 +75,7 @@ export function parseResponse<T>(data: unknown, schema: z.ZodType<T>): T | null 
 
 export async function apiFetch<T>(
   url: string,
-  schema: z.ZodType<T>,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   options?: RequestInit,
 ): Promise<ApiResponse<T>> {
   const resp = await try$(fetch(url, options));

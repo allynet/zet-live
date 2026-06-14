@@ -484,7 +484,7 @@ pub async fn get_trip(headers: HeaderMap, Path(id): Path<String>) -> impl IntoRe
 #[serde(rename_all = "camelCase")]
 pub struct TripStopTime {
     pub stop_id: String,
-    pub stop_sequence: u64,
+    pub stop_sequence: i64,
     pub stop_name: String,
     pub arrival_time: Option<i64>,
 }
@@ -495,6 +495,127 @@ pub struct TripInfo {
     pub stop_ids: Vec<String>,
     pub route: Vec<(f64, f64)>,
     pub stop_times: Vec<TripStopTime>,
+}
+
+/// Clear arrival times for stops the vehicle has already passed
+/// (`seq < next_seq`) and for predictions that are now stale (`t < now`).
+fn clear_passed_stops(stop_times: &mut [TripStopTime], next_seq: i64, now: i64) {
+    for st in stop_times {
+        if st.stop_sequence < next_seq {
+            st.arrival_time = None;
+            continue;
+        }
+
+        if st.arrival_time.is_some_and(|t| t < now) {
+            st.arrival_time = None;
+        }
+    }
+}
+
+/// Backward-interpolate missing arrival times using the first known future
+/// stop as an anchor. For each gap between `next_seq` and that anchor, the
+/// filled time is derived by subtracting the schedule-time difference from the
+/// anchor's predicted arrival.
+fn interpolate_backward(
+    stop_times: &mut [TripStopTime],
+    schedule_offsets: &BTreeMap<i64, i64>,
+    next_seq: i64,
+    now: i64,
+) {
+    let Some(first) = stop_times
+        .iter()
+        .find(|st| st.stop_sequence > next_seq && st.arrival_time.is_some_and(|t| t > now))
+    else {
+        return;
+    };
+
+    let first_seq = first.stop_sequence;
+    let Some(first_time) = first.arrival_time else {
+        return;
+    };
+    let Some(&first_offset) = schedule_offsets.get(&first_seq) else {
+        return;
+    };
+
+    for st in stop_times {
+        if st.stop_sequence <= next_seq
+            || st.stop_sequence >= first_seq
+            || st.arrival_time.is_some()
+        {
+            continue;
+        }
+
+        let Some(&offset) = schedule_offsets.get(&st.stop_sequence) else {
+            continue;
+        };
+
+        let filled = first_time - (first_offset - offset);
+        if filled >= now {
+            st.arrival_time = Some(filled);
+        }
+    }
+}
+
+/// Forward-propagate arrival times from the vehicle's own ETA (`fill_anchor`).
+/// For each stop after `next_seq` that lacks a prediction, the filled time is
+/// the previous known time plus the schedule-time difference between the two
+/// stops. Stops that already have a future prediction update the running
+/// anchor.
+fn propagate_forward(
+    stop_times: &mut [TripStopTime],
+    schedule_offsets: &BTreeMap<i64, i64>,
+    fill_anchor: i64,
+    anchor_offset: i64,
+    next_seq: i64,
+    now: i64,
+) {
+    let mut last_time = fill_anchor;
+    let mut last_offset = anchor_offset;
+
+    for st in stop_times {
+        if st.stop_sequence <= next_seq {
+            continue;
+        }
+
+        let Some(&offset) = schedule_offsets.get(&st.stop_sequence) else {
+            continue;
+        };
+
+        if st.arrival_time.is_some_and(|t| t > now) {
+            let t = st.arrival_time.unwrap_or(last_time).max(last_time);
+            st.arrival_time = Some(t);
+            last_time = t;
+            last_offset = offset;
+            continue;
+        }
+
+        let filled = (last_time + (offset - last_offset)).max(last_time);
+        st.arrival_time = Some(filled);
+        last_time = filled;
+        last_offset = offset;
+    }
+}
+
+/// Enforce monotonically non-decreasing arrival times from `next_seq` onward,
+/// using `fill_anchor` as the minimum allowed time.
+fn enforce_monotonic(stop_times: &mut [TripStopTime], fill_anchor: i64, next_seq: i64) {
+    let mut max_time = fill_anchor;
+
+    for st in stop_times {
+        if st.stop_sequence < next_seq {
+            continue;
+        }
+
+        let Some(t) = st.arrival_time else {
+            continue;
+        };
+
+        if t < max_time {
+            st.arrival_time = Some(max_time);
+        }
+
+        max_time = max_time.max(st.arrival_time.unwrap_or(max_time));
+    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -522,7 +643,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
 
     let pool = Database::pool();
 
-    let (shapes, stop_ids, scheduled, live) = tokio::join!(
+    let (shapes, stop_ids, scheduled, live, next_stop_sequence) = tokio::join!(
         async {
             if let Some(shape_id) = shape_id {
                 let shape_id = shape_id.clone();
@@ -608,6 +729,23 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
                 .await
             }
         },
+        {
+            let trip_id = trip_id.clone();
+            let pool = pool.clone();
+
+            async move {
+                Database::logged(
+                    "get_trip_info_live_vehicle",
+                    sqlx::query!(
+                        "SELECT next_stop_sequence, next_stop_arrival_time
+                         FROM live_vehicles WHERE trip_id = ? LIMIT 1",
+                        trip_id
+                    )
+                    .fetch_optional(&pool),
+                )
+                .await
+            }
+        },
     );
 
     let stop_ids = match stop_ids {
@@ -654,7 +792,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
         }
     };
 
-    let stop_times = {
+    let (mut stop_times, schedule_offsets) = {
         let scheduled = match scheduled {
             Ok(s) => s,
             Err(e) => {
@@ -662,6 +800,10 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
                 Vec::new()
             }
         };
+        let schedule_offsets: BTreeMap<i64, i64> = scheduled
+            .iter()
+            .filter_map(|s| Some((s.stop_sequence, s.arrival_time_seconds?)))
+            .collect();
         let live = match live {
             Ok(l) => l,
             Err(e) => {
@@ -742,8 +884,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
 
                 TripStopTime {
                     stop_id: s.stop_id.clone(),
-                    #[allow(clippy::cast_sign_loss)]
-                    stop_sequence: s.stop_sequence as u64,
+                    stop_sequence: s.stop_sequence,
                     stop_name: s.stop_name.unwrap_or_default(),
                     arrival_time: predicted_arrival,
                 }
@@ -771,21 +912,40 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
             max_time = Some(t.max(max_time.unwrap_or(i64::MIN)));
         }
 
-        // Null out predicted arrivals for stops the vehicle has already
-        // passed (arrival more than 30s in the past). A 30s buffer
-        // accounts for clock drift between feed updates, data fetching,
-        // and processing latency.
-        let now = jiff::Timestamp::now().as_second();
-        for st in &mut stop_times {
-            if let Some(t) = st.arrival_time
-                && t < now - 30
-            {
-                st.arrival_time = None;
-            }
-        }
-
-        stop_times
+        (stop_times, schedule_offsets)
     };
+
+    let live_vehicle = match next_stop_sequence {
+        Ok(row) => row,
+        Err(e) => {
+            error!(%e, ?trip_id, "Failed to get live vehicle");
+            None
+        }
+    };
+
+    let now = jiff::Timestamp::now().as_second();
+
+    if let Some(lv) = live_vehicle
+        && let Some(next_seq) = lv.next_stop_sequence
+    {
+        let anchor_offset = schedule_offsets.get(&next_seq).copied();
+        let fill_anchor = lv.next_stop_arrival_time.map_or(now, |t| t.max(now));
+
+        clear_passed_stops(&mut stop_times, next_seq, now);
+
+        if let Some(anchor_offset) = anchor_offset {
+            interpolate_backward(&mut stop_times, &schedule_offsets, next_seq, now);
+            propagate_forward(
+                &mut stop_times,
+                &schedule_offsets,
+                fill_anchor,
+                anchor_offset,
+                next_seq,
+                now,
+            );
+            enforce_monotonic(&mut stop_times, fill_anchor, next_seq);
+        }
+    }
 
     JsonOrAccept(
         Versioned::new(

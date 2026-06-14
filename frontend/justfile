@@ -13,6 +13,9 @@ dev:
 [parallel]
 lint: type-check _lint
 
+[parallel]
+check: lint fmt-check
+
 _lint:
     bun run lint
 

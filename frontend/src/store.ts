@@ -3,7 +3,10 @@ import { z } from "zod";
 import type { VehicleV1 } from "./app/entity/v1/vehicle";
 import type { StopV1 } from "./app/entity/v1/stop";
 import type { GroupedStop } from "./app/entity/shared";
+import type { TripStopTimeEntry } from "./app/trip-stop-times";
 import { stopArrivalTimeSchema } from "./app/entity/v1/api";
+
+export type { TripStopTimeEntry };
 
 export type { GroupedStop };
 
@@ -39,7 +42,7 @@ export type StoreState = {
   deltaMoveLines: VehicleLocationPair[];
   followingRoute: [number, number][] | null;
 
-  tripStopTimes: Map<string, number> | null;
+  tripStopTimes: TripStopTimeEntry[] | null;
 
   stopArrivalTimes: StopArrivalTime[] | null;
 

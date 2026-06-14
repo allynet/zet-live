@@ -1,25 +1,20 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import type { VehicleV1 } from "@/app/entity/v1/vehicle";
+import type { TripStopTimeEntry } from "@/app/trip-stop-times";
+import { buildArrivalTimeLookup, lookupStopArrivalTime } from "@/app/trip-stop-times";
 import {
   requestIdleCallback,
   requestAnimationFrame,
   cancelAnimationOrIdleCallback,
 } from "@/utils/polyfill/requestSomeCallback";
-
-function formatMinutesFromNow(arrivalTime: number): string {
-  const secondsUntil = arrivalTime - Date.now() / 1000;
-  const minutes = Math.round(secondsUntil / 60);
-  if (minutes <= 0) return "now";
-  if (minutes === 1) return "1 min";
-  return `${minutes} min`;
-}
+import { formatMinutesFromNow } from "@/utils/time";
 
 type Props = {
   vehicle: VehicleV1;
-  displayedStops: { name: string; ids: string[] }[];
+  displayedStops: { name: string; ids: string[]; stopSequence?: number }[];
   nextStopIndex: number;
-  tripStopTimes: Map<string, number> | null;
+  tripStopTimes: TripStopTimeEntry[] | null;
   tripFetchError: string | null;
   followEnabled: boolean;
   onToggleFollow: () => void;
@@ -38,15 +33,31 @@ export function VehicleSheet({
   onLocate,
   onStopClick,
 }: Props) {
-  const arrivalLabel = vehicle.nextStopArrivalTime
-    ? (() => {
-        const secondsUntil = vehicle.nextStopArrivalTime - Date.now() / 1000;
-        const minutes = Math.round(secondsUntil / 60);
-        if (minutes <= 0) return "now";
-        if (minutes === 1) return "1 min";
-        return `${minutes} min`;
-      })()
-    : null;
+  const stopBadges = useMemo(() => {
+    const lookup = buildArrivalTimeLookup(tripStopTimes);
+
+    return displayedStops.map((stop, i) => {
+      const isNext = i === nextStopIndex;
+      const isUpcoming = nextStopIndex >= 0 && i > nextStopIndex;
+
+      if (!isNext && !isUpcoming) return null;
+
+      const arrivalTime =
+        isNext && vehicle.nextStopArrivalTime !== null
+          ? vehicle.nextStopArrivalTime
+          : lookupStopArrivalTime(lookup, stop.ids, stop.stopSequence);
+
+      if (arrivalTime === null) return null;
+
+      const at = new Date(arrivalTime * 1000);
+
+      return {
+        iso: at.toISOString(),
+        locale: at.toLocaleString(),
+        fromNow: formatMinutesFromNow(at),
+      };
+    });
+  }, [displayedStops, nextStopIndex, tripStopTimes, vehicle.nextStopArrivalTime]);
 
   useEffect(() => {
     let timeout = requestIdleCallback(() => {
@@ -97,22 +108,7 @@ export function VehicleSheet({
           {displayedStops.map((stop, i) => {
             const isNext = i === nextStopIndex;
             const isPassed = nextStopIndex >= 0 && i < nextStopIndex;
-            const isUpcoming = nextStopIndex >= 0 && i > nextStopIndex;
-
-            const stopArrivalTime = tripStopTimes
-              ? (stop.ids.map((id) => tripStopTimes.get(id)).find((t) => t !== null) ?? null)
-              : null;
-            const stopArrivalDate = stopArrivalTime ? new Date(stopArrivalTime * 1000) : null;
-
-            const showBadge = isNext
-              ? arrivalLabel !== null
-              : isUpcoming && stopArrivalTime !== null;
-
-            const badgeText = isNext
-              ? arrivalLabel
-              : stopArrivalTime !== null
-                ? formatMinutesFromNow(stopArrivalTime)
-                : null;
+            const arrivalTime = stopBadges[i];
 
             return (
               <li
@@ -139,15 +135,15 @@ export function VehicleSheet({
                   )}
                 </span>
                 <span className="min-w-0 truncate">{stop.name}</span>
-                {showBadge && badgeText && stopArrivalDate && (
+                {arrivalTime && (
                   <time
-                    dateTime={stopArrivalDate.toISOString()}
-                    title={stopArrivalDate.toLocaleString()}
+                    dateTime={arrivalTime.iso}
+                    title={arrivalTime.locale}
                     className={`ml-auto shrink-0 rounded px-1.5 py-0.5 text-xs font-bold ${
                       isNext ? "bg-primary text-on-primary" : "bg-surface-dim text-on-surface-muted"
                     }`}
                   >
-                    {badgeText}
+                    {arrivalTime.fromNow}
                   </time>
                 )}
               </li>

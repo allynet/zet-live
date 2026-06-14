@@ -1,12 +1,5 @@
 import type { StopArrivalTime } from "@/store";
-
-function formatMinutesFromNow(arrivalTime: number): string {
-  const secondsUntil = arrivalTime - Date.now() / 1000;
-  const minutes = Math.round(secondsUntil / 60);
-  if (minutes <= 0) return "now";
-  if (minutes === 1) return "1 min";
-  return `${minutes} min`;
-}
+import { formatMinutesFromNow } from "@/utils/time";
 
 type Props = {
   stop: { name: string; ids: string[]; routes: string[] };
@@ -22,18 +15,18 @@ export function StopSheet({ arrivals, onArrivalClick }: Props) {
     grouped.set(a.routeId, list);
   }
 
-  for (const [, list] of grouped) {
+  for (const list of grouped.values()) {
     list.sort((a, b) => {
       if (a.arrivalTime === null && b.arrivalTime === null) return 0;
       if (a.arrivalTime === null) return 1;
       if (b.arrivalTime === null) return -1;
-      return a.arrivalTime - b.arrivalTime;
+      return a.arrivalTime.getTime() - b.arrivalTime.getTime();
     });
   }
 
   const sortedGroups = [...grouped.entries()].sort(([, a], [, b]) => {
-    const aMin = a.find((x) => x.arrivalTime !== null)?.arrivalTime ?? Infinity;
-    const bMin = b.find((x) => x.arrivalTime !== null)?.arrivalTime ?? Infinity;
+    const aMin = a.find((x) => x.arrivalTime !== null)?.arrivalTime?.getTime() ?? Infinity;
+    const bMin = b.find((x) => x.arrivalTime !== null)?.arrivalTime?.getTime() ?? Infinity;
     return aMin - bMin;
   });
 

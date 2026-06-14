@@ -11,6 +11,7 @@ import { useUrlSync } from "@/hooks/use-url-sync";
 import { useVersionCheck } from "@/hooks/use-version-check";
 import { useTheme } from "@/hooks/use-theme";
 import { useStore } from "@/store";
+import { findNextStopIndex } from "@/app/trip-stop-times";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
 import type { ReactNode } from "react";
 import { SettingsButton, SettingsModal } from "./components/settings-modal";
@@ -36,8 +37,12 @@ export function App() {
   const followEnabled = useStore((s) => s.followEnabled);
   const tripFetchError = useStore((s) => s.tripFetchError);
 
-  const nextStopIndex = selectedVehicle?.nextStopId
-    ? displayedStops.findIndex((stop) => stop.ids.includes(selectedVehicle.nextStopId!))
+  const nextStopIndex = selectedVehicle
+    ? findNextStopIndex(
+        displayedStops,
+        selectedVehicle.nextStopSequence,
+        selectedVehicle.nextStopId,
+      )
     : -1;
 
   const isOpen = selectedVehicle !== null || selectedStop !== null;
@@ -102,7 +107,7 @@ export function App() {
 
     const firstArrival = stopArrivalTimes?.find((a) => a.arrivalTime !== null);
     if (firstArrival) {
-      const secondsUntil = firstArrival.arrivalTime! - Date.now() / 1000;
+      const secondsUntil = (firstArrival.arrivalTime!.getTime() - Date.now()) / 1000;
       const minutes = Math.round(secondsUntil / 60);
       const label = minutes <= 0 ? "now" : minutes === 1 ? "1 min" : `${minutes} min`;
       minimizedBody = (
