@@ -1,4 +1,5 @@
 use std::{
+    net::SocketAddr,
     path::PathBuf,
     sync::{Arc, OnceLock},
 };
@@ -114,16 +115,14 @@ pub enum CliCommands {
 
 #[derive(Debug, clap::Args)]
 pub struct ServerConfig {
-    /// The port the server listens on.
-    #[clap(short = 'P', long, default_value = "9011", env = "PORT")]
-    pub port: u16,
-
-    /// The host to bind the server to.
+    /// The address to bind the server to.
     ///
-    /// Should usually be either `0.0.0.0` if you want to bind to all interfaces aka the public,
-    /// or `127.0.0.1` if you don't want to expose the server to the outside world.
-    #[clap(short = 'H', long, default_value = "0.0.0.0", env = "HOST")]
-    pub host: String,
+    /// Should usually be either `0.0.0.0:$PORT` if you want to bind to all interfaces aka the public,
+    /// or `127.0.0.1:$PORT` if you don't want to expose the server to the outside world.
+    ///
+    /// You can set the port to 0 to have the server pick a random available port.
+    #[clap(long, env = "BIND_TO", default_value = "0.0.0.0:9011")]
+    pub bind_to: SocketAddr,
 
     /// The `SQLite` database URL to use.
     ///
@@ -137,13 +136,25 @@ pub struct ServerConfig {
     /// Should be set to `rightmost-x-forwarded-for` if the server is behind a reverse proxy
     #[clap(long, env = "IP_SOURCE", default_value_t = ClientIpSource::RightmostXForwardedFor)]
     pub ip_source: ClientIpSource,
-}
-impl ServerConfig {
-    pub fn address(&self) -> Result<std::net::SocketAddr, std::net::AddrParseError> {
-        let host = self.host.parse::<std::net::IpAddr>()?;
 
-        Ok(std::net::SocketAddr::new(host, self.port))
-    }
+    /// The bearer token required to access the admin API.
+    ///
+    /// If not set, the admin server will not be started.
+    /// Also requires admin-bind-to to be set.
+    #[clap(long, env = "ADMIN_KEY")]
+    pub admin_key: Option<String>,
+
+    /// The address to bind the admin server to.
+    ///
+    /// If not set, the admin server will not be started.
+    /// Also requires admin-key to be set.
+    ///
+    /// Should usually be either `0.0.0.0:$PORT` if you want to bind to all interfaces aka the public,
+    /// or `127.0.0.1:$PORT` if you don't want to expose the server to the outside world.
+    ///
+    /// You can set the port to 0 to have the server pick a random available port.
+    #[clap(long, env = "ADMIN_BIND_TO")]
+    pub admin_bind_to: Option<SocketAddr>,
 }
 
 #[derive(Debug, Clone)]

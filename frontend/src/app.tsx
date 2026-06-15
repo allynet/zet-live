@@ -15,6 +15,7 @@ import { findNextStopIndex } from "@/app/trip-stop-times";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
 import type { ReactNode } from "react";
 import { SettingsButton, SettingsModal } from "./components/settings-modal";
+import { NoticeBar } from "./components/notice-bar";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { useSetting } from "./settings";
 
@@ -165,14 +166,19 @@ export function App() {
       <div className="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2 *:pointer-events-auto">
         <div className="flex flex-col gap-2">
           <SettingsButton />
-          <div>
+          <div className="h-4">
             <div className="absolute ml-1.5">
               <StatusBar />
             </div>
           </div>
         </div>
+
         <div className="w-full max-w-md">
           <SearchBar />
+        </div>
+
+        <div className="pointer-events-none col-span-2">
+          <NoticeBar />
         </div>
       </div>
 

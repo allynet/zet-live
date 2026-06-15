@@ -3,6 +3,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use crate::config::project::ProjectConfig;
 
+mod admin;
 mod cli;
 mod config;
 mod database;

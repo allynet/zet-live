@@ -5,6 +5,7 @@ import type { StopV1 } from "./app/entity/v1/stop";
 import type { GroupedStop } from "./app/entity/shared";
 import type { TripStopTimeEntry } from "./app/trip-stop-times";
 import { stopArrivalTimeSchema } from "./app/entity/v1/api";
+import type { GlobalNotice } from "./app/entity/v1/message";
 
 export type { TripStopTimeEntry };
 
@@ -65,6 +66,8 @@ export type StoreState = {
 
   searchMatchedVehicleMapIds: Set<string> | null;
   searchMatchedStopIds: Set<string> | null;
+
+  globalNotices: GlobalNotice[] | null;
 };
 
 const DEFAULT_BOUNDS: [[number, number], [number, number]] = [
@@ -113,6 +116,8 @@ export const useStore = create<StoreState>()(() => ({
 
   searchMatchedVehicleMapIds: null,
   searchMatchedStopIds: null,
+
+  globalNotices: null,
 }));
 
 export function updateMaxBounds() {

@@ -1,15 +1,27 @@
 use std::{
     string::ToString,
-    sync::{Arc, LazyLock},
-    time::Duration,
+    sync::{
+        Arc, LazyLock,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
 };
 
 use tokio::sync::Notify;
 use tracing::{debug, trace, warn};
 
-use crate::{cli::Config, database::Database, proto::gtfs_schedule::data::GtfsSchedule};
+use crate::{admin, cli::Config, database::Database, proto::gtfs_schedule::data::GtfsSchedule};
 
 static DATA_NOTIFICATION: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
+static FORCE_SYNC: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
+static FORCE_FLAG: AtomicBool = AtomicBool::new(false);
+
+const METADATA_NAME: &str = "gtfs_static_fetch";
+
+pub fn force_sync() {
+    FORCE_FLAG.store(true, Ordering::Relaxed);
+    FORCE_SYNC.notify_one();
+}
 
 pub async fn wait_for_schedule_update() {
     DATA_NOTIFICATION.notified().await;
@@ -30,13 +42,30 @@ pub fn spawn_schedule_fetcher() {
 
         trace!(interval = ?interval, "Starting schedule fetcher");
         loop {
-            if let Err(e) = fetch_and_update_schedule().await {
+            let forced = FORCE_FLAG.swap(false, Ordering::Relaxed);
+            let paused = admin::ADMIN_SETTINGS
+                .read()
+                .await
+                .static_paused
+                .unwrap_or(false);
+
+            if paused && !forced {
+                trace!("Static schedule fetching paused, skipping");
+                admin::metadata::write_metadata(
+                    METADATA_NAME,
+                    &admin::metadata::MetadataEntry::paused(),
+                )
+                .await;
+            } else if let Err(e) = fetch_and_update_schedule(forced).await {
                 warn!(error = %e, "Failed to fetch and update schedule");
-                tokio::time::sleep(interval / 5).await;
-                continue;
             }
 
-            tokio::time::sleep(interval).await;
+            tokio::select! {
+                () = tokio::time::sleep(interval) => {},
+                () = FORCE_SYNC.notified() => {
+                    trace!("Force sync triggered");
+                },
+            }
         }
     });
 }
@@ -55,20 +84,61 @@ pub enum FetcherError {
     Database(#[from] sqlx::Error),
 }
 
-async fn fetch_and_update_schedule() -> Result<(), FetcherError> {
-    fetch_newer_schedule().await?;
+async fn fetch_and_update_schedule(forced: bool) -> Result<(), FetcherError> {
+    admin::metadata::write_metadata(
+        METADATA_NAME,
+        &admin::metadata::MetadataEntry::in_progress(),
+    )
+    .await;
+
+    let start = Instant::now();
+    let has_updates = match fetch_newer_schedule(forced).await {
+        Err(e) => {
+            admin::metadata::write_metadata(
+                METADATA_NAME,
+                &admin::metadata::MetadataEntry::error()
+                    .with_error_message(e.to_string())
+                    .with_duration(start.elapsed()),
+            )
+            .await;
+
+            return Err(e);
+        }
+        Ok(x) => x.is_some(),
+    };
+
+    if has_updates {
+        admin::metadata::write_metadata(
+            METADATA_NAME,
+            &admin::metadata::MetadataEntry::success().with_duration(start.elapsed()),
+        )
+        .await;
+    } else {
+        admin::metadata::write_metadata(
+            METADATA_NAME,
+            &admin::metadata::MetadataEntry::skipped().with_duration(start.elapsed()),
+        )
+        .await;
+    }
+
     trace!("Got newer schedule");
     DATA_NOTIFICATION.notify_waiters();
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 #[tracing::instrument(skip_all)]
-async fn fetch_newer_schedule() -> Result<Option<()>, FetcherError> {
-    let url = Config::global()
-        .global
-        .data_fetcher
-        .schedule_fetch_endpoint
-        .clone();
+async fn fetch_newer_schedule(forced: bool) -> Result<Option<()>, FetcherError> {
+    let url = {
+        let settings = admin::ADMIN_SETTINGS.read().await;
+        settings.static_url.clone().unwrap_or_else(|| {
+            Config::global()
+                .global
+                .data_fetcher
+                .schedule_fetch_endpoint
+                .clone()
+        })
+    };
 
     debug!(url = ?url.as_str(), "Fetching metadata");
 
@@ -120,38 +190,41 @@ async fn fetch_newer_schedule() -> Result<Option<()>, FetcherError> {
     .map_err(FetcherError::Database)?
     .is_some();
 
-    trace!(have_data = ?res, "Checking schedule metadata");
+    trace!(forced, have_data = ?res, "Checking schedule metadata");
 
-    if res {
+    if !forced && res {
         trace!("Schedule is up to date");
         return Ok(None);
     }
 
-    trace!("Schedule is newer");
+    trace!(forced, "Schedule is newer");
 
     let zip_body = response.bytes().await.map_err(FetcherError::Fetch)?;
 
     trace!(len = ?zip_body.len(), "Got zip body");
 
-    GtfsSchedule::read_from_zip_bytes(zip_body)
-        .await
-        .map_err(FetcherError::Parse)?;
+    let parse_result = GtfsSchedule::read_from_zip_bytes(zip_body).await;
 
-    debug!("Schedule read to database, committing metadata");
+    match parse_result {
+        Ok(()) => {
+            debug!("Schedule read to database, committing metadata");
 
-    Database::logged(
-        "schedule_meta_insert",
-        sqlx::query!(
-            "INSERT INTO gtfs_schedule_meta (last_modified, etag) VALUES (?, ?)",
-            modified,
-            etag,
-        )
-        .execute(&Database::pool()),
-    )
-    .await
-    .map_err(FetcherError::Database)?;
+            Database::logged(
+                "schedule_meta_insert",
+                sqlx::query!(
+                    "INSERT INTO gtfs_schedule_meta (last_modified, etag) VALUES (?, ?)",
+                    modified,
+                    etag,
+                )
+                .execute(&Database::pool()),
+            )
+            .await
+            .map_err(FetcherError::Database)?;
 
-    debug!("Schedule updated");
+            debug!("Schedule updated");
 
-    Ok(Some(()))
+            Ok(Some(()))
+        }
+        Err(e) => Err(FetcherError::Parse(e)),
+    }
 }

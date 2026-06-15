@@ -86,7 +86,6 @@ export function BottomSheet({
   return (
     <div className="pointer-events-none fixed right-0 bottom-0 left-0 z-999 flex justify-center">
       <motion.div
-        aria-role="dialog"
         aria-label="Bottom sheet"
         aria-modal="true"
         role="dialog"

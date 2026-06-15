@@ -9,6 +9,7 @@ import {
 import { API_URL } from "@/app/consts";
 import { processMessage, handleStopsUpdate } from "./use-stops";
 import { useStore } from "@/store";
+import { toast } from "sonner";
 
 export function useWebSocket() {
   useEffect(() => {
@@ -18,6 +19,16 @@ export function useWebSocket() {
       const response = e.data;
       switch (response.type) {
         case "processed-message": {
+          const data = response.data.d;
+          if (typeof data === "object" && "notices" in data) {
+            useStore.setState({ globalNotices: data.notices.length > 0 ? data.notices : null });
+            return;
+          }
+          if (typeof data === "object" && "toast" in data) {
+            const { message, type: toastType, duration } = data.toast;
+            toast[toastType](message, { duration });
+            return;
+          }
           processMessage(response.data);
           return;
         }

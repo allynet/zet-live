@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZET Live — Admin</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.5;
+    }
+
+    h1 {
+      color: #f8fafc;
+      margin: 0 0 1rem;
+      font-size: 1.5rem;
+    }
+
+    h2 {
+      color: #94a3b8;
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 2rem 0 0.75rem;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 0.5rem;
+    }
+
+    .card {
+      background: #1e293b;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #334155;
+    }
+
+    .row:last-child {
+      border-bottom: none;
+    }
+
+    .label {
+      flex: 0 0 200px;
+      font-weight: 500;
+      color: #cbd5e1;
+      font-size: 0.875rem;
+    }
+
+    .value {
+      flex: 1;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.25rem;
+      color: #e2e8f0;
+      padding: 0.375rem 0.5rem;
+      font-size: 0.8rem;
+      font-family: inherit;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 0.25rem;
+      padding: 0.375rem 0.75rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    button:hover {
+      background: #2563eb;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button.secondary {
+      background: #334155;
+    }
+
+    button.secondary:hover {
+      background: #475569;
+    }
+
+    button.danger {
+      background: #dc2626;
+    }
+
+    button.danger:hover {
+      background: #b91c1c;
+    }
+
+    .toggle {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      background: #334155;
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .toggle.active {
+      background: #3b82f6;
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+
+    .toggle.active::after {
+      transform: translateX(18px);
+    }
+
+    .status {
+      display: inline-block;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .status.success {
+      background: #065f46;
+      color: #6ee7b7;
+    }
+
+    .status.error {
+      background: #7f1d1d;
+      color: #fca5a5;
+    }
+
+    .status.in-progress {
+      background: #1e3a5f;
+      color: #93c5fd;
+    }
+
+    .status.paused {
+      background: #374151;
+      color: #d1d5db;
+    }
+
+    .connections-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+
+    .conn-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.25rem 0.5rem;
+      background: #0f172a;
+      border-radius: 0.25rem;
+      font-size: 0.8rem;
+    }
+
+    .conn-ip {
+      color: #cbd5e1;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+
+    .conn-count {
+      color: #3b82f6;
+      font-weight: 600;
+    }
+
+    .empty {
+      color: #64748b;
+      font-style: italic;
+      font-size: 0.875rem;
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    textarea {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.25rem;
+      color: #e2e8f0;
+      padding: 0.375rem 0.5rem;
+      font-size: 0.8rem;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+
+    select {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.25rem;
+      color: #e2e8f0;
+      padding: 0.375rem 0.5rem;
+      font-size: 0.8rem;
+      font-family: inherit;
+    }
+
+    select:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+
+    .notice-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      background: #0f172a;
+      border-radius: 0.25rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .notice-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .notice-badge {
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+
+    .notice-badge.info {
+      background: #1e3a5f;
+      color: #93c5fd;
+    }
+
+    .notice-badge.warning {
+      background: #713f12;
+      color: #fde68a;
+    }
+
+    .notice-badge.error {
+      background: #7f1d1d;
+      color: #fca5a5;
+    }
+
+    .notice-text {
+      flex: 1;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+      word-break: break-word;
+    }
+
+    .notice-id {
+      font-size: 0.65rem;
+      color: #475569;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+
+    .add-notice-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid #334155;
+    }
+
+    .add-notice-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: flex-end;
+    }
+
+    .notify-target-ips {
+      margin-top: 0.5rem;
+    }
+
+    .notify-target-ips label {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      cursor: pointer;
+      padding: 0.125rem 0;
+    }
+
+    .btn-sm {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.7rem;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>ZET Live Admin</h1>
+
+  <h2>Connections</h2>
+  <div class="card" id="connections">
+    <p class="empty">Loading...</p>
+  </div>
+
+  <h2>Settings</h2>
+  <div class="card" id="settings">
+    <div class="row">
+      <span class="label">Realtime URL</span>
+      <input type="text" id="setting-realtimeUrl" placeholder="Default from env">
+      <button onclick="saveSetting('realtimeUrl')">Save</button>
+      <button class="secondary" onclick="clearSetting('realtimeUrl')">Reset</button>
+    </div>
+    <div class="row">
+      <span class="label">Static URL</span>
+      <input type="text" id="setting-staticUrl" placeholder="Default from env">
+      <button onclick="saveSetting('staticUrl')">Save</button>
+      <button class="secondary" onclick="clearSetting('staticUrl')">Reset</button>
+    </div>
+    <div class="row">
+      <span class="label">Pause Realtime</span>
+      <div class="toggle" id="toggle-realtimePaused" onclick="togglePaused('realtimePaused')"></div>
+    </div>
+    <div class="row">
+      <span class="label">Pause Static</span>
+      <div class="toggle" id="toggle-staticPaused" onclick="togglePaused('staticPaused')"></div>
+    </div>
+  </div>
+
+  <h2>Global Notices</h2>
+  <div class="card" id="notices">
+    <p class="empty">Loading...</p>
+    <div class="add-notice-form">
+      <textarea id="notice-text" placeholder="Enter notice text..."></textarea>
+      <div class="add-notice-row">
+        <select id="notice-severity">
+          <option value="info">Info</option>
+          <option value="warning">Warning</option>
+          <option value="error">Error</option>
+        </select>
+        <button onclick="addNotice()">Add Notice</button>
+        <button class="danger" onclick="clearAllNotices()">Clear All</button>
+      </div>
+    </div>
+  </div>
+
+  <h2>Send Notification</h2>
+  <div class="card">
+    <div class="add-notice-form" style="margin-top:0;padding-top:0;border-top:none;">
+      <input type="text" id="notify-message" placeholder="Notification message...">
+      <div class="add-notice-row">
+        <select id="notify-type">
+          <option value="info">Info</option>
+          <option value="success">Success</option>
+          <option value="warning">Warning</option>
+          <option value="error">Error</option>
+        </select>
+        <select id="notify-target" onchange="toggleNotifyIps()">
+          <option value="all">All Users</option>
+          <option value="ips">Specific IPs</option>
+        </select>
+        <button onclick="sendNotify()">Send</button>
+      </div>
+      <div class="notify-target-ips" id="notify-ips-container" style="display:none;">
+        <p style="font-size:0.75rem;color:#94a3b8;margin:0 0 0.25rem;">Select IPs from active connections:</p>
+        <div id="notify-ips-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Sync</h2>
+  <div class="card">
+    <div class="row">
+      <span class="label">Force Realtime Sync</span>
+      <div class="actions">
+        <button onclick="forceSync('realtime')">Sync Now</button>
+      </div>
+    </div>
+    <div class="row">
+      <span class="label">Force Static Sync</span>
+      <div class="actions">
+        <button onclick="forceSync('static')">Sync Now</button>
+      </div>
+    </div>
+  </div>
+
+  <h2>Metadata</h2>
+  <div class="card" id="metadata">
+    <p class="empty">Loading...</p>
+  </div>
+
+  <script>
+    const ADMIN_API_URL_BASE = window.__ADMIN_API_URL_BASE__ || localStorage.getItem('admin_api_url') || window.prompt('Enter admin API URL') || "";
+    const ADMIN_KEY = window.__ADMIN_KEY__ || localStorage.getItem('admin_key') || window.prompt('Enter admin key') || "";
+
+    if (!ADMIN_API_URL_BASE) {
+      document.body.innerHTML = '<h1>401 Unauthorized</h1><button onclick="location.reload();">Enter admin API URL</button>';
+      throw new Error('Unauthorized');
+    } else {
+      localStorage.setItem('admin_api_url', ADMIN_API_URL_BASE);
+    }
+
+    if (!ADMIN_KEY) {
+      document.body.innerHTML = '<h1>401 Unauthorized</h1><button onclick="localStorage.setItem(\'admin_key\', window.prompt(\'Enter admin key\')); location.reload();">Enter admin key</button>';
+      throw new Error('Unauthorized');
+    } else {
+      localStorage.setItem('admin_key', ADMIN_KEY);
+    }
+
+    async function api(path, options = {}) {
+      const headers = { 'Authorization': 'Bearer ' + ADMIN_KEY, 'Content-Type': 'application/json' };
+      const res = await fetch(ADMIN_API_URL_BASE + path, { ...options, headers: { ...headers, ...options.headers } });
+      if (res.status === 401) {
+        document.body.innerHTML = '<h1>401 Unauthorized</h1><button onclick="localStorage.removeItem(\'admin_key\'); location.reload();">Enter admin key</button>';
+        throw new Error('Unauthorized');
+      }
+      return res;
+    }
+
+    async function loadConnections() {
+      const res = await api('/connections');
+      const data = await res.json();
+      window._lastConnections = data;
+      const el = document.getElementById('connections');
+      const entries = Object.entries(data);
+      if (entries.length === 0) {
+        el.innerHTML = '<p class="empty">No active connections</p>';
+        return;
+      }
+      const total = entries.reduce((sum, [, c]) => sum + c, 0);
+      el.innerHTML = '<p style="margin-bottom:0.5rem;font-size:0.8rem;color:#94a3b8">Total: ' + total + ' connection' + (total !== 1 ? 's' : '') + ' from ' + entries.length + ' IP' + (entries.length !== 1 ? 's' : '') + '</p>'
+        + '<div class="connections-grid">' + entries.map(([ip, count]) =>
+          '<div class="conn-item"><span class="conn-ip">' + ip + '</span><span class="conn-count">' + count + '</span></div>'
+        ).join('') + '</div>';
+    }
+
+    async function loadSettings() {
+      const res = await api('/settings');
+      const data = await res.json();
+      document.getElementById('setting-realtimeUrl').value = data.realtimeUrl || '';
+      document.getElementById('setting-staticUrl').value = data.staticUrl || '';
+      const rtToggle = document.getElementById('toggle-realtimePaused');
+      const stToggle = document.getElementById('toggle-staticPaused');
+      rtToggle.classList.toggle('active', !!data.realtimePaused);
+      stToggle.classList.toggle('active', !!data.staticPaused);
+      renderNotices(data.globalNotices || []);
+    }
+
+    function renderNotices(notices) {
+      const el = document.getElementById('notices');
+      const formEl = el.querySelector('.add-notice-form');
+      if (notices.length === 0) {
+        el.innerHTML = '<p class="empty">No active notices</p>';
+      } else {
+        let html = notices.map(n =>
+          '<div class="notice-item">' +
+          '<span class="notice-badge ' + n.severity + '">' + n.severity + '</span>' +
+          '<span class="notice-text">' + escapeHtml(n.text) + '</span>' +
+          '<span class="notice-id">' + n.id.substring(0, 8) + '</span>' +
+          '<button class="danger btn-sm" onclick="removeNotice(\'' + n.id + '\')">&times;</button>' +
+          '</div>'
+        ).join('');
+        el.innerHTML = html;
+      }
+      el.appendChild(formEl || createNoticeForm());
+    }
+
+    function createNoticeForm() {
+      const div = document.createElement('div');
+      div.className = 'add-notice-form';
+      div.innerHTML =
+        '<textarea id="notice-text" placeholder="Enter notice text..."></textarea>' +
+        '<div class="add-notice-row">' +
+        '<select id="notice-severity">' +
+        '<option value="info">Info</option>' +
+        '<option value="warning">Warning</option>' +
+        '<option value="error">Error</option>' +
+        '</select>' +
+        '<button onclick="addNotice()">Add Notice</button>' +
+        '<button class="danger" onclick="clearAllNotices()">Clear All</button>' +
+        '</div>';
+      return div;
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    async function getNotices() {
+      const res = await api('/settings');
+      const data = await res.json();
+      return data.globalNotices || [];
+    }
+
+    async function saveNotices(notices) {
+      await api('/settings/globalNotices', { method: 'PUT', body: JSON.stringify({ value: notices }) });
+      await loadSettings();
+    }
+
+    async function addNotice() {
+      const text = document.getElementById('notice-text').value.trim();
+      if (!text) return;
+      const severity = document.getElementById('notice-severity').value;
+      const notices = await getNotices();
+      notices.push({ id: crypto.randomUUID(), text, severity });
+      await saveNotices(notices);
+    }
+
+    async function removeNotice(id) {
+      const notices = await getNotices();
+      await saveNotices(notices.filter(n => n.id !== id));
+    }
+
+    async function clearAllNotices() {
+      await saveNotices([]);
+    }
+
+    function toggleNotifyIps() {
+      const target = document.getElementById('notify-target').value;
+      const container = document.getElementById('notify-ips-container');
+      container.style.display = target === 'ips' ? 'block' : 'none';
+      if (target === 'ips') {
+        renderNotifyIps();
+      }
+    }
+
+    function renderNotifyIps() {
+      const el = document.getElementById('notify-ips-list');
+      const connections = window._lastConnections || {};
+      const entries = Object.entries(connections);
+      if (entries.length === 0) {
+        el.innerHTML = '<p class="empty">No active connections</p>';
+        return;
+      }
+      el.innerHTML = entries.map(([ip]) =>
+        '<label><input type="checkbox" class="notify-ip-check" value="' + ip + '"> ' + ip + '</label>'
+      ).join('');
+    }
+
+    async function sendNotify() {
+      const message = document.getElementById('notify-message').value.trim();
+      if (!message) return;
+      const type = document.getElementById('notify-type').value;
+      const target = document.getElementById('notify-target').value;
+      const body = { message, type, target };
+      if (target === 'ips') {
+        const checks = document.querySelectorAll('.notify-ip-check:checked');
+        body.ips = Array.from(checks).map(c => c.value);
+        if (body.ips.length === 0) {
+          alert('Select at least one IP');
+          return;
+        }
+      }
+      await api('/notify', { method: 'POST', body: JSON.stringify(body) });
+      document.getElementById('notify-message').value = '';
+    }
+
+    async function saveSetting(name) {
+      const input = document.getElementById('setting-' + name);
+      const value = input.value.trim() || null;
+      await api('/settings/' + name, { method: 'PUT', body: JSON.stringify({ value }) });
+      await loadSettings();
+    }
+
+    async function clearSetting(name) {
+      document.getElementById('setting-' + name).value = '';
+      await api('/settings/' + name, { method: 'PUT', body: JSON.stringify({ value: null }) });
+      await loadSettings();
+    }
+
+    async function togglePaused(name) {
+      const toggle = document.getElementById('toggle-' + name);
+      const current = toggle.classList.contains('active');
+      await api('/settings/' + name, { method: 'PUT', body: JSON.stringify({ value: !current }) });
+      await loadSettings();
+    }
+
+    async function forceSync(type) {
+      await api('/sync/' + type, { method: 'POST' });
+      setTimeout(loadMetadata, 1000);
+    }
+
+    async function loadMetadata() {
+      const res = await api('/metadata');
+      const entries = await res.json();
+      const el = document.getElementById('metadata');
+      if (!entries || Object.keys(entries).length === 0) {
+        el.innerHTML = '<p class="empty">No metadata available</p>';
+        return;
+      }
+      const objectEntries = Object.entries(entries);
+      objectEntries.sort((lt, gt) => gt[0].localeCompare(lt[0]));
+      el.innerHTML = objectEntries.map(([name, m]) => {
+        const statusClass = m.status;
+        const statusLabel = m.status.replace('-', ' ');
+        let details = '<span class="status ' + statusClass + '">' + statusLabel + '</span>';
+        if (m.lastSyncAt) details += ' <span style="color:#64748b;font-size:0.75rem">' + new Date(m.lastSyncAt).toLocaleString() + '</span>';
+        if (m.durationMs != null) details += ' <span style="color:#64748b;font-size:0.75rem">(' + m.durationMs + 'ms)</span>';
+        if (m.recordsProcessed != null) details += ' <span style="color:#64748b;font-size:0.75rem">' + m.recordsProcessed + ' records</span>';
+        if (m.errorMessage) details += ' <span style="color:#fca5a5;font-size:0.75rem">' + m.errorMessage + '</span>';
+        return '<div class="row"><span class="label">' + name + '</span><div>' + details + '</div></div>';
+      }).join('');
+    }
+
+    async function refresh() {
+      await Promise.all([loadConnections(), loadMetadata()]);
+    }
+
+    loadSettings();
+    refresh();
+    setInterval(refresh, 5000);
+  </script>
+</body>
+
+</html>

@@ -11,7 +11,6 @@ use axum::{
         State, WebSocketUpgrade,
         ws::{Message, WebSocket},
     },
-    http::HeaderMap,
     response::IntoResponse,
 };
 use axum_client_ip::ClientIp;
@@ -22,15 +21,14 @@ use tokio::{
 };
 use tracing::{debug, error, trace, warn};
 
-use super::{INITIAL_STATE, V1AppState};
-use crate::server::{request::JsonOrAccept, routes::v1::Transmission};
+use super::{
+    INITIAL_STATE, V1AppState,
+    admin_notifications::{AdminNotification, NotificationTarget, get_admin_notification_receiver},
+};
+use crate::server::routes::v1::Transmission;
 
 pub static WS_CONNECTIONS: LazyLock<Arc<RwLock<HashMap<IpAddr, u32>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
-
-pub async fn get_ws_connections(headers: HeaderMap) -> impl IntoResponse {
-    JsonOrAccept(WS_CONNECTIONS.read().await.clone(), headers).into_response()
-}
 
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
@@ -38,6 +36,36 @@ pub async fn websocket_handler(
     ClientIp(ip): ClientIp,
 ) -> impl IntoResponse {
     ws.on_upgrade(move |stream| websocket(stream, ip, state))
+}
+
+async fn handle_admin_notification(
+    notification: &AdminNotification,
+    addr: IpAddr,
+    sender: &Arc<Mutex<futures::stream::SplitSink<WebSocket, Message>>>,
+) -> bool {
+    match notification {
+        AdminNotification::Toast { bytes, target, ips } => {
+            let should_send = match target {
+                NotificationTarget::All => true,
+                NotificationTarget::Ips => ips.contains(&addr),
+            };
+
+            if !should_send {
+                return true;
+            }
+
+            if sender
+                .lock()
+                .await
+                .send(Message::Binary(Bytes::from(bytes.clone())))
+                .await
+                .is_err()
+            {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
@@ -54,20 +82,21 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
 
     if let Err(e) = send_initial_state(sender.clone()).await {
         error!(?e, "Error sending initial state");
+        cleanup_connection(addr).await;
         return;
     }
 
-    // ping the client every 30ish seconds
-    let mut ping_handle = {
-        let mut ping_interval = {
-            // randomize ping interval as 30 seconds +/- 5 seconds
-            #[allow(clippy::cast_sign_loss)] // Will always be positive
-            let interval = (30_000 + rand::random_range(-5_000..5_000)) as u64;
-            time::interval(Duration::from_millis(interval))
-        };
-        let sender = sender.clone();
-        tokio::spawn(async move {
-            loop {
+    let mut ping_interval = {
+        #[allow(clippy::cast_sign_loss)]
+        let interval = (30_000 + rand::random_range(-5_000_i64..5_000)) as u64;
+        time::interval(Duration::from_millis(interval))
+    };
+    let mut transmission_rx = state.get_transmission_receiver();
+    let mut notification_rx = get_admin_notification_receiver();
+
+    loop {
+        tokio::select! {
+            _ = ping_interval.tick() => {
                 debug!(?addr, "Pinging client");
                 if sender
                     .lock()
@@ -78,17 +107,10 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
                 {
                     break;
                 }
-                ping_interval.tick().await;
             }
-        })
-    };
-
-    let mut transmission_handle = {
-        tokio::spawn(async move {
-            let mut rx = state.get_transmission_receiver();
-            loop {
-                let transmission = match state.wait_for_transmission(&mut rx).await {
-                    Ok(transmission) => transmission,
+            result = state.wait_for_transmission(&mut transmission_rx) => {
+                let transmission = match result {
+                    Ok(t) => t,
                     Err(e) => {
                         warn!(?e, "Error waiting for transmission");
                         break;
@@ -97,75 +119,105 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
 
                 match transmission.as_ref() {
                     Transmission::BroadcastToAll(data) => {
-                        trace!(to = ?addr, "Broadcasting vehicles");
-                        let res = sender
+                        trace!(to = ?addr, "Broadcasting data");
+                        if sender
                             .lock()
                             .await
                             .send(Message::Binary(Bytes::copy_from_slice(data)))
-                            .await;
-
-                        if let Err(err) = res {
-                            trace!(to = ?addr, ?err, "Closing websocket due to send error");
+                            .await
+                            .is_err()
+                        {
+                            trace!(to = ?addr, "Closing websocket due to send error");
                             break;
                         }
                     }
                     Transmission::Empty => {}
                 }
             }
-        })
-    };
+            result = notification_rx.recv() => {
+                let notification = match result {
+                    Ok(n) => n,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
+                        warn!(count, "Admin notification channel lagged");
+                        continue;
+                    }
+                    Err(e) => {
+                        warn!(?e, "Admin notification channel closed");
+                        break;
+                    }
+                };
 
-    tokio::select! {
-        _ = &mut ping_handle => transmission_handle.abort(),
-        _ = &mut transmission_handle => ping_handle.abort(),
-    }
-
-    {
-        let mut ws_connections = WS_CONNECTIONS.write().await;
-        if let Some(count) = ws_connections.get_mut(&addr) {
-            *count = count.saturating_sub(1);
-            if *count == 0 {
-                ws_connections.remove(&addr);
+                if !handle_admin_notification(&notification, addr, &sender).await {
+                    break;
+                }
             }
         }
     }
 
+    cleanup_connection(addr).await;
+
     debug!(?addr, "Websocket closed");
+}
+
+async fn cleanup_connection(addr: IpAddr) {
+    let mut ws_connections = WS_CONNECTIONS.write().await;
+    if let Some(count) = ws_connections.get_mut(&addr) {
+        *count = count.saturating_sub(1);
+        if *count == 0 {
+            ws_connections.remove(&addr);
+        }
+    }
 }
 
 async fn send_initial_state(
     sender: Arc<Mutex<futures::stream::SplitSink<WebSocket, Message>>>,
 ) -> Result<(), axum::Error> {
-    let initial_state = INITIAL_STATE.read().await;
-    let vehicles = async {
-        let vehicles = initial_state.vehicles.clone();
+    {
+        let vehicles = INITIAL_STATE.read().await.vehicles.clone();
 
-        sender
+        let res = sender
             .lock()
             .await
             .send(Message::Binary(Bytes::from(vehicles)))
-            .await
-    };
-    let active_stops = async {
-        let active_stops = initial_state.active_stops.clone();
+            .await;
 
-        sender
+        if let Err(e) = res {
+            error!(?e, "Error sending initial vehicles");
+            return Err(e);
+        }
+    }
+
+    {
+        let active_stops = INITIAL_STATE.read().await.active_stops.clone();
+
+        let res = sender
             .lock()
             .await
             .send(Message::Binary(Bytes::from(active_stops)))
-            .await
-    };
+            .await;
 
-    let (vehicles, active_stops) = tokio::join!(vehicles, active_stops);
-
-    if let Err(e) = vehicles {
-        error!(?e, "Error sending initial vehicles");
-        return Err(e);
+        if let Err(e) = res {
+            error!(?e, "Error sending initial active stops");
+            return Err(e);
+        }
     }
 
-    if let Err(e) = active_stops {
-        error!(?e, "Error sending initial active stops");
-        return Err(e);
+    {
+        let notices = INITIAL_STATE.read().await.notices.clone();
+        if notices.is_empty() {
+            return Ok(());
+        }
+
+        let res = sender
+            .lock()
+            .await
+            .send(Message::Binary(Bytes::from(notices)))
+            .await;
+
+        if let Err(e) = res {
+            error!(?e, "Error sending initial notices");
+            return Err(e);
+        }
     }
 
     Ok(())

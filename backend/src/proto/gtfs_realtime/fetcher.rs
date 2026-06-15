@@ -1,5 +1,8 @@
 use std::{
-    sync::{Arc, LazyLock},
+    sync::{
+        Arc, LazyLock,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -8,17 +11,33 @@ use tokio::sync::{Notify, RwLock};
 use tracing::{debug, trace, warn};
 
 use super::data::transit_realtime::FeedMessage;
-use crate::{cli::Config, http_client::HTTP_CLIENT};
+use crate::{admin, cli::Config, http_client::HTTP_CLIENT};
 
 static FEED: LazyLock<RwLock<Option<Arc<FeedMessage>>>> = LazyLock::new(|| RwLock::new(None));
 static FEED_NOTIFICATION: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
+static FORCE_SYNC: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
+static FORCE_FLAG: AtomicBool = AtomicBool::new(false);
+
+const METADATA_NAME: &str = "gtfs_realtime_fetch";
+
+pub fn force_sync() {
+    FORCE_FLAG.store(true, Ordering::Relaxed);
+    FORCE_SYNC.notify_one();
+}
 
 pub async fn fetch_feed() -> Result<FeedMessage, FetcherError> {
-    let url = Config::global()
-        .global
-        .data_fetcher
-        .data_fetch_endpoint
-        .clone();
+    let url = admin::ADMIN_SETTINGS
+        .read()
+        .await
+        .realtime_url
+        .clone()
+        .unwrap_or_else(|| {
+            Config::global()
+                .global
+                .data_fetcher
+                .data_fetch_endpoint
+                .clone()
+        });
 
     debug!(url = ?url.as_str(), "Fetching feed");
 
@@ -59,26 +78,55 @@ pub async fn wait_for_feed_update() -> Arc<FeedMessage> {
     get_cached_feed().await.expect("Feed should be present")
 }
 
-async fn fetch_and_update_feed(after_timestamp: u64) -> Option<u64> {
+async fn fetch_and_update_feed(after_timestamp: u64, forced: bool) -> Option<u64> {
+    let start = Instant::now();
+
+    admin::metadata::write_metadata(
+        METADATA_NAME,
+        &admin::metadata::MetadataEntry::in_progress(),
+    )
+    .await;
+
     let feed = match fetch_feed().await {
         Ok(feed) => feed,
         Err(e) => {
             warn!(error = %e, "Failed to fetch and update feed");
+            admin::metadata::write_metadata(
+                METADATA_NAME,
+                &admin::metadata::MetadataEntry::error()
+                    .with_error_message(e.to_string())
+                    .with_duration(start.elapsed()),
+            )
+            .await;
             return None;
         }
     };
 
     let timestamp = feed.header.timestamp();
-    if timestamp <= after_timestamp {
+    if !forced && timestamp <= after_timestamp {
+        admin::metadata::write_metadata(
+            METADATA_NAME,
+            &admin::metadata::MetadataEntry::skipped().with_duration(start.elapsed()),
+        )
+        .await;
         return None;
     }
 
-    trace!(timestamp = ?timestamp, "Got newer feed");
+    trace!(forced, timestamp = ?timestamp, "Got newer feed");
 
+    let entity_count = feed.entity.len();
     *FEED.write().await = Some(Arc::new(feed));
 
     trace!("Notifying feed fetcher");
     FEED_NOTIFICATION.notify_waiters();
+
+    admin::metadata::write_metadata(
+        METADATA_NAME,
+        &admin::metadata::MetadataEntry::success()
+            .with_duration(start.elapsed())
+            .with_records_processed(entity_count as u64),
+    )
+    .await;
 
     Some(timestamp)
 }
@@ -98,12 +146,32 @@ pub fn spawn_feed_fetcher() {
         trace!(interval = ?interval, "Starting feed fetcher");
         let mut previous_timestamp = 0;
         loop {
-            if let Some(new_timestamp) = fetch_and_update_feed(previous_timestamp).await {
+            let forced = FORCE_FLAG.swap(false, Ordering::Relaxed);
+            let paused = admin::ADMIN_SETTINGS
+                .read()
+                .await
+                .realtime_paused
+                .unwrap_or(false);
+            if paused && !forced {
+                trace!("Realtime fetching paused, skipping");
+                admin::metadata::write_metadata(
+                    METADATA_NAME,
+                    &admin::metadata::MetadataEntry::paused(),
+                )
+                .await;
+            } else if let Some(new_timestamp) =
+                fetch_and_update_feed(previous_timestamp, forced).await
+            {
                 previous_timestamp = new_timestamp;
                 debug!(ts = ?new_timestamp, "Got newer feed");
             }
 
-            tokio::time::sleep(interval).await;
+            tokio::select! {
+                () = tokio::time::sleep(interval) => {},
+                () = FORCE_SYNC.notified() => {
+                    trace!("Force sync triggered");
+                },
+            }
         }
     });
 }

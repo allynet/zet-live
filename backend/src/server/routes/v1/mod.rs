@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, LazyLock},
+    sync::{Arc, LazyLock, OnceLock},
     time::Instant,
 };
 
@@ -11,6 +11,7 @@ use tokio::sync::{RwLock, watch};
 use tracing::{error, trace, warn};
 
 use crate::{
+    admin::settings::GlobalNotice,
     database::Database,
     entity::util::{mixed_value::MixedValue, versioned::Versioned},
     proto::gtfs_realtime::{
@@ -20,22 +21,24 @@ use crate::{
 };
 
 mod _entity;
+pub mod admin_notifications;
 mod app;
 mod feed;
 mod schedule;
 mod vehicles;
-mod ws;
+pub mod ws;
 
 pub fn create_v1_router() -> Router {
     let app_state = Arc::new(V1AppState::new());
     tokio::task::spawn(feed_listener(app_state.clone()));
+
+    let _ = V1_APP_STATE.set(app_state.clone());
 
     Router::new()
         .route("/version", get(app::get_version))
         .route("/vehicles", get(vehicles::get_all))
         .route("/feed", get(feed::get_feed))
         .route("/ws", get(ws::websocket_handler))
-        .route("/ws/connections", get(ws::get_ws_connections))
         .route("/schedule/routes", get(schedule::get_routes))
         .route("/schedule/routes/{id}", get(schedule::get_route))
         .route("/schedule/stops", get(schedule::get_stops))
@@ -60,13 +63,38 @@ pub fn create_v1_router() -> Router {
 pub struct InitialState {
     vehicles: Vec<u8>,
     active_stops: Vec<u8>,
+    notices: Vec<u8>,
 }
 pub static INITIAL_STATE: LazyLock<RwLock<InitialState>> = LazyLock::new(|| {
     RwLock::new(InitialState {
         vehicles: Vec::new(),
         active_stops: Vec::new(),
+        notices: Vec::new(),
     })
 });
+
+static V1_APP_STATE: OnceLock<Arc<V1AppState>> = OnceLock::new();
+
+pub fn serialize_notices(notices: &[GlobalNotice]) -> Option<Vec<u8>> {
+    let versioned = Versioned::new(1, Broadcast::Notices(notices.to_vec()));
+    minicbor_serde::to_vec(&versioned).ok()
+}
+
+pub async fn broadcast_notices(notices: &[GlobalNotice]) {
+    let Some(bytes) = serialize_notices(notices) else {
+        return;
+    };
+
+    INITIAL_STATE.write().await.notices = if notices.is_empty() {
+        Vec::new()
+    } else {
+        bytes.clone()
+    };
+
+    if let Some(state) = V1_APP_STATE.get() {
+        state.send_transmission(Transmission::BroadcastToAll(bytes));
+    }
+}
 
 async fn feed_listener(app_state: Arc<V1AppState>) {
     if let Some(feed) = get_cached_feed().await {
@@ -778,6 +806,18 @@ impl V1AppState {
 pub enum Broadcast {
     Vehicles(Vec<Vec<MixedValue>>),
     ActiveStops(Vec<String>),
+    Notices(Vec<GlobalNotice>),
+    Toast(ToastData),
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToastData {
+    pub message: String,
+    #[serde(rename = "type")]
+    pub toast_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<u32>,
 }
 
 pub enum Transmission {

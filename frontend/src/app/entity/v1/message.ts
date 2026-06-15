@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { versionedSchema } from "../versioned";
 
+const noticeSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  severity: z.enum(["info", "warning", "error"]),
+});
+
 export const v1MessageSchema = versionedSchema(
   1,
   z
@@ -12,6 +18,20 @@ export const v1MessageSchema = versionedSchema(
     .or(
       z.object({
         activeStops: z.array(z.string()),
+      }),
+    )
+    .or(
+      z.object({
+        notices: z.array(noticeSchema),
+      }),
+    )
+    .or(
+      z.object({
+        toast: z.object({
+          message: z.string(),
+          type: z.enum(["info", "success", "warning", "error"]),
+          duration: z.number().optional(),
+        }),
       }),
     )
     .or(
@@ -33,3 +53,4 @@ export const v1MessageSchema = versionedSchema(
 );
 
 export type V1Message = z.infer<typeof v1MessageSchema>;
+export type GlobalNotice = z.infer<typeof noticeSchema>;

@@ -5,8 +5,8 @@ use tokio::net::TcpListener;
 use tracing::{debug, error, info};
 
 pub mod error;
-mod request;
-mod routes;
+pub mod request;
+pub mod routes;
 
 use crate::{
     cli::ServerConfig,
@@ -24,26 +24,42 @@ pub async fn run(server_config: &ServerConfig) -> anyhow::Result<()> {
         return Err(anyhow::anyhow!(e).context("Failed to initialize database"));
     }
 
+    crate::admin::init().await;
+
     spawn_feed_fetcher();
     spawn_schedule_fetcher();
 
     info!("Waiting for initial schedule info and feed");
     {
-        let mut js = {
-            let mut s = tokio::task::JoinSet::new();
-            s.spawn(async move {
+        let settings = crate::admin::ADMIN_SETTINGS.read().await;
+        let realtime_paused = settings.realtime_paused.unwrap_or(false);
+        let static_paused = settings.static_paused.unwrap_or(false);
+        drop(settings);
+
+        let mut js = tokio::task::JoinSet::new();
+
+        if static_paused {
+            debug!("Static schedule fetching paused, skipping initial wait");
+        } else {
+            js.spawn(async move {
                 crate::proto::gtfs_schedule::fetcher::wait_for_schedule_update().await;
             });
-            s.spawn(async move {
+        }
+
+        if realtime_paused {
+            debug!("Realtime fetching paused, skipping initial wait");
+        } else {
+            js.spawn(async move {
                 crate::proto::gtfs_realtime::fetcher::wait_for_feed_update().await;
             });
-            s
-        };
+        }
 
         while let Some(x) = js.join_next().await {
             x?;
         }
     }
+
+    crate::admin::run(server_config).await?;
 
     let app = routes::create_router(server_config.ip_source.clone())
         .into_make_service_with_connect_info::<SocketAddr>();
@@ -69,19 +85,14 @@ async fn create_listener(server_config: &ServerConfig) -> anyhow::Result<TcpList
         return TcpListener::from_std(listener).map_err(Into::into);
     }
 
-    let address = match server_config.address() {
-        Ok(x) => x,
-        Err(e) => {
-            error!(?e, "Failed to parse server address");
-            return Err(anyhow::anyhow!(e).context("Failed to parse server address"));
-        }
-    };
-
-    match TcpListener::bind(address).await {
+    match TcpListener::bind(server_config.bind_to).await {
         Ok(x) => Ok(x),
         Err(e) => {
             error!(?e, "Failed to bind to address");
-            Err(anyhow::anyhow!(e).context(format!("Failed to bind to address {address:?}")))
+            Err(anyhow::anyhow!(e).context(format!(
+                "Failed to bind to address {:?}",
+                server_config.bind_to
+            )))
         }
     }
 }
