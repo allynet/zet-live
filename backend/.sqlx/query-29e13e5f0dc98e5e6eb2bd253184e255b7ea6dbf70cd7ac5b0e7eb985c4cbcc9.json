@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT next_stop_sequence, next_stop_arrival_time\n                         FROM live_vehicles WHERE trip_id = ? LIMIT 1",
+  "query": "SELECT next_stop_sequence, next_stop_arrival_time\n                 FROM live_vehicles WHERE trip_id = ? LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -34,5 +34,5 @@
       true
     ]
   },
-  "hash": "6a60374c92af084da6583640f6a0d53e32f3ba387fa5154d63efece8be1a6b64"
+  "hash": "29e13e5f0dc98e5e6eb2bd253184e255b7ea6dbf70cd7ac5b0e7eb985c4cbcc9"
 }

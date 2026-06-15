@@ -1,16 +1,24 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use axum::{extract::Path, http::HeaderMap, response::IntoResponse};
 use axum_extra::extract::Query;
 use serde::{Deserialize, Serialize};
-use sqlx::{AssertSqlSafe, FromRow};
-use tracing::{debug, error};
+use sqlx::{AssertSqlSafe, FromRow, SqlitePool};
+use tracing::error;
 
 use crate::{
     database::Database,
     entity::util::versioned::Versioned,
     proto::gtfs_schedule::data::{Route, Shape, SimpleStop, Trip},
     server::{error::ApiError, request::JsonOrAccept},
+};
+
+mod predictions;
+
+pub use predictions::compute_base_midnight;
+use predictions::{
+    LiveStopTime, LiveVehicleAnchor, ScheduledStop, predict_trip_stop_times,
+    try_infer_base_midnight,
 };
 
 async fn get_base_midnight() -> i64 {
@@ -263,9 +271,9 @@ pub async fn get_stop_trips(
             stop_sequence: u32,
             next_stop_sequence: Option<u32>,
             live_arrival_time: Option<i64>,
-            live_arrival_delay: Option<i32>,
+            live_arrival_delay: Option<i64>,
             arrival_time_seconds: Option<i64>,
-            effective_delay: Option<i32>,
+            effective_delay: Option<i64>,
         }
 
         sqlx::query_as::<_, StopTripRow>(AssertSqlSafe(sql))
@@ -291,9 +299,8 @@ pub async fn get_stop_trips(
 
     for row in &rows {
         if let (Some(live_time), Some(offset)) = (row.live_arrival_time, row.arrival_time_seconds) {
-            let delay = i64::from(row.live_arrival_delay.unwrap_or(0));
-            let computed = live_time - delay - offset;
-            if computed.abs_diff(now) < 86400 * 2 {
+            let delay = row.live_arrival_delay.unwrap_or(0);
+            if let Some(computed) = try_infer_base_midnight(live_time, delay, offset, now) {
                 trip_base_midnight
                     .entry(row.trip_id.clone())
                     .or_insert(computed);
@@ -319,22 +326,16 @@ pub async fn get_stop_trips(
             .copied()
             .unwrap_or(global_base_midnight);
 
-        let has_live_prediction =
-            row.live_arrival_time.is_some() || row.live_arrival_delay.is_some();
-
-        let predicted = if has_live_prediction {
-            if row.live_arrival_time.is_some() {
-                row.live_arrival_time
-            } else if let (Some(delay), Some(offset)) =
-                (row.live_arrival_delay, row.arrival_time_seconds)
-            {
-                Some(base_midnight + offset + i64::from(delay))
-            } else {
-                None
-            }
-        } else if let (Some(offset), Some(delay)) = (row.arrival_time_seconds, row.effective_delay)
-        {
-            Some(base_midnight + offset + i64::from(delay))
+        let predicted = if row.live_arrival_time.is_some() {
+            row.live_arrival_time
+        } else if let Some(offset) = row.arrival_time_seconds {
+            row.live_arrival_delay.map_or_else(
+                || {
+                    row.effective_delay
+                        .map(|delay| base_midnight + offset + delay)
+                },
+                |delay| Some(base_midnight + offset + delay),
+            )
         } else {
             None
         };
@@ -497,461 +498,244 @@ pub struct TripInfo {
     pub stop_times: Vec<TripStopTime>,
 }
 
-/// Clear arrival times for stops the vehicle has already passed
-/// (`seq < next_seq`) and for predictions that are now stale (`t < now`).
-fn clear_passed_stops(stop_times: &mut [TripStopTime], next_seq: i64, now: i64) {
-    for st in stop_times {
-        if st.stop_sequence < next_seq {
-            st.arrival_time = None;
-            continue;
-        }
-
-        if st.arrival_time.is_some_and(|t| t < now) {
-            st.arrival_time = None;
-        }
-    }
+struct TripShapeData {
+    route: Vec<(f64, f64)>,
 }
 
-/// Backward-interpolate missing arrival times using the first known future
-/// stop as an anchor. For each gap between `next_seq` and that anchor, the
-/// filled time is derived by subtracting the schedule-time difference from the
-/// anchor's predicted arrival.
-fn interpolate_backward(
-    stop_times: &mut [TripStopTime],
-    schedule_offsets: &BTreeMap<i64, i64>,
-    next_seq: i64,
-    now: i64,
-) {
-    let Some(first) = stop_times
+fn build_route_from_shapes(
+    shape_rows: &[(Option<f64>, Option<f64>, Option<i64>)],
+    scheduled: &[ScheduledStop],
+) -> TripShapeData {
+    let mut shape_points: Vec<_> = shape_rows
         .iter()
-        .find(|st| st.stop_sequence > next_seq && st.arrival_time.is_some_and(|t| t > now))
-    else {
-        return;
-    };
+        .filter_map(|(lat, lon, sequence)| {
+            Some(Coord {
+                latitude: (*lat)?,
+                longitude: (*lon)?,
+                sequence: (*sequence)?,
+            })
+        })
+        .collect();
 
-    let first_seq = first.stop_sequence;
-    let Some(first_time) = first.arrival_time else {
-        return;
-    };
-    let Some(&first_offset) = schedule_offsets.get(&first_seq) else {
-        return;
-    };
+    if shape_points.is_empty() {
+        let route = scheduled
+            .iter()
+            .filter_map(|s| {
+                Some(
+                    Coord {
+                        latitude: s.latitude?,
+                        longitude: s.longitude?,
+                        sequence: s.stop_sequence,
+                    }
+                    .as_tuple(),
+                )
+            })
+            .collect();
 
-    for st in stop_times {
-        if st.stop_sequence <= next_seq
-            || st.stop_sequence >= first_seq
-            || st.arrival_time.is_some()
-        {
-            continue;
-        }
+        return TripShapeData { route };
+    }
 
-        let Some(&offset) = schedule_offsets.get(&st.stop_sequence) else {
-            continue;
-        };
+    shape_points.sort_by_key(|p| p.sequence);
 
-        let filled = first_time - (first_offset - offset);
-        if filled >= now {
-            st.arrival_time = Some(filled);
-        }
+    TripShapeData {
+        route: shape_points.iter().map(Coord::as_tuple).collect(),
     }
 }
 
-/// Forward-propagate arrival times from the vehicle's own ETA (`fill_anchor`).
-/// For each stop after `next_seq` that lacks a prediction, the filled time is
-/// the previous known time plus the schedule-time difference between the two
-/// stops. Stops that already have a future prediction update the running
-/// anchor.
-fn propagate_forward(
-    stop_times: &mut [TripStopTime],
-    schedule_offsets: &BTreeMap<i64, i64>,
-    fill_anchor: i64,
-    anchor_offset: i64,
-    next_seq: i64,
-    now: i64,
-) {
-    let mut last_time = fill_anchor;
-    let mut last_offset = anchor_offset;
-
-    for st in stop_times {
-        if st.stop_sequence <= next_seq {
-            continue;
-        }
-
-        let Some(&offset) = schedule_offsets.get(&st.stop_sequence) else {
-            continue;
-        };
-
-        if st.arrival_time.is_some_and(|t| t > now) {
-            let t = st.arrival_time.unwrap_or(last_time).max(last_time);
-            st.arrival_time = Some(t);
-            last_time = t;
-            last_offset = offset;
-            continue;
-        }
-
-        let filled = (last_time + (offset - last_offset)).max(last_time);
-        st.arrival_time = Some(filled);
-        last_time = filled;
-        last_offset = offset;
-    }
-}
-
-/// Enforce monotonically non-decreasing arrival times from `next_seq` onward,
-/// using `fill_anchor` as the minimum allowed time.
-fn enforce_monotonic(stop_times: &mut [TripStopTime], fill_anchor: i64, next_seq: i64) {
-    let mut max_time = fill_anchor;
-
-    for st in stop_times {
-        if st.stop_sequence < next_seq {
-            continue;
-        }
-
-        let Some(t) = st.arrival_time else {
-            continue;
-        };
-
-        if t < max_time {
-            st.arrival_time = Some(max_time);
-        }
-
-        max_time = max_time.max(st.arrival_time.unwrap_or(max_time));
-    }
-}
-
-#[allow(clippy::too_many_lines)]
-pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> impl IntoResponse {
-    let trip = {
-        let trip_id = trip_id.clone();
-        let t = Database::logged(
-            "get_trip_info_shape_id",
-            sqlx::query!("SELECT shape_id FROM gtfs_trips WHERE trip_id = ?", trip_id)
-                .fetch_optional(&Database::pool()),
+async fn fetch_trip_shapes(
+    trip_id: &str,
+    pool: &SqlitePool,
+) -> Result<Vec<(Option<f64>, Option<f64>, Option<i64>)>, sqlx::Error> {
+    let rows = Database::logged(
+        "get_trip_info_trip_shapes",
+        sqlx::query!(
+            "
+            SELECT
+                  gs.shape_pt_lat AS lat
+                , gs.shape_pt_lon AS lon
+                , gs.shape_pt_sequence AS sequence
+            FROM gtfs_trips t
+            LEFT JOIN gtfs_shapes gs ON gs.shape_id = t.shape_id
+            WHERE t.trip_id = ?
+            ORDER BY gs.shape_pt_sequence
+            ",
+            trip_id
         )
-        .await;
+        .fetch_all(pool),
+    )
+    .await?;
 
-        match t {
-            Ok(Some(trip)) => trip,
-            Ok(None) => return ApiError::not_found("Trip not found").into_response(),
-            Err(e) => {
-                error!(%e, ?trip_id, "Failed to get trip");
-                return ApiError::internal("Failed to get trip").into_response();
-            }
-        }
-    };
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.lat, row.lon, row.sequence))
+        .collect())
+}
 
-    let shape_id = trip.shape_id.as_ref();
+async fn fetch_scheduled_stops(
+    trip_id: &str,
+    pool: &SqlitePool,
+) -> Result<Vec<ScheduledStop>, sqlx::Error> {
+    let rows = Database::logged(
+        "get_trip_info_scheduled",
+        sqlx::query!(
+            "
+            SELECT
+                  st.stop_id
+                , st.stop_sequence
+                , st.arrival_time_seconds
+                , s.stop_name
+                , s.latitude
+                , s.longitude
+            FROM gtfs_stop_times st
+            LEFT JOIN gtfs_stops s ON s.stop_id = st.stop_id
+            WHERE st.trip_id = ?
+            ORDER BY st.stop_sequence
+            ",
+            trip_id
+        )
+        .fetch_all(pool),
+    )
+    .await?;
 
+    Ok(rows
+        .into_iter()
+        .map(|row| ScheduledStop {
+            stop_id: row.stop_id,
+            stop_sequence: row.stop_sequence,
+            stop_name: row.stop_name.unwrap_or_default(),
+            arrival_time_seconds: row.arrival_time_seconds,
+            latitude: row.latitude,
+            longitude: row.longitude,
+        })
+        .collect())
+}
+
+struct LiveTripData {
+    live: Vec<LiveStopTime>,
+    vehicle: Option<LiveVehicleAnchor>,
+}
+
+async fn fetch_live_trip_data(
+    trip_id: &str,
+    pool: &SqlitePool,
+) -> Result<LiveTripData, sqlx::Error> {
+    let rows = Database::logged(
+        "get_trip_info_live",
+        sqlx::query!(
+            "
+            SELECT
+                  lst.stop_sequence
+                , lst.arrival_time
+                , lst.arrival_delay
+                , lv.next_stop_sequence
+                , lv.next_stop_arrival_time
+            FROM live_trip_stop_times lst
+            LEFT JOIN live_vehicles lv ON lv.trip_id = lst.trip_id
+            WHERE lst.trip_id = ?
+            ORDER BY lst.stop_sequence
+            ",
+            trip_id
+        )
+        .fetch_all(pool),
+    )
+    .await?;
+
+    if rows.is_empty() {
+        let vehicle = Database::logged(
+            "get_trip_info_live_vehicle",
+            sqlx::query!(
+                "SELECT next_stop_sequence, next_stop_arrival_time
+                 FROM live_vehicles WHERE trip_id = ? LIMIT 1",
+                trip_id
+            )
+            .fetch_optional(pool),
+        )
+        .await?;
+
+        return Ok(LiveTripData {
+            live: Vec::new(),
+            vehicle: vehicle.and_then(|row| {
+                Some(LiveVehicleAnchor {
+                    next_stop_sequence: row.next_stop_sequence?,
+                    next_stop_arrival_time: row.next_stop_arrival_time,
+                })
+            }),
+        });
+    }
+
+    let vehicle = rows.iter().find_map(|row| {
+        Some(LiveVehicleAnchor {
+            next_stop_sequence: row.next_stop_sequence?,
+            next_stop_arrival_time: row.next_stop_arrival_time,
+        })
+    });
+
+    let live = rows
+        .into_iter()
+        .map(|row| LiveStopTime {
+            stop_sequence: row.stop_sequence,
+            arrival_time: row.arrival_time,
+            arrival_delay: row.arrival_delay,
+        })
+        .collect();
+
+    Ok(LiveTripData { live, vehicle })
+}
+
+pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> impl IntoResponse {
     let pool = Database::pool();
 
-    let (shapes, stop_ids, scheduled, live, next_stop_sequence) = tokio::join!(
-        async {
-            if let Some(shape_id) = shape_id {
-                let shape_id = shape_id.clone();
-                Database::logged(
-                    "get_trip_info_shapes",
-                    sqlx::query!(
-                        "SELECT * FROM gtfs_shapes WHERE shape_id = ? order by shape_pt_sequence",
-                        shape_id
-                    )
-                    .fetch_all(&pool),
-                )
-                .await
-            } else {
-                Ok(Vec::new())
-            }
-        },
-        async {
-            let trip_id = trip_id.clone();
-            Database::logged(
-                "get_trip_info_stop_ids",
-                sqlx::query!(
-                    "
-                    SELECT DISTINCT
-                        st.stop_id
-                        , s.latitude
-                        , s.longitude
-                    FROM gtfs_stop_times st
-                    LEFT JOIN gtfs_stops s on s.stop_id = st.stop_id
-                    WHERE
-                        trip_id = ?
-                    GROUP BY st.stop_id
-                    ORDER BY st.stop_sequence
-                    ",
-                    trip_id
-                )
-                .fetch_all(&pool),
-            )
-            .await
-        },
-        {
-            let trip_id = trip_id.clone();
-            let pool = pool.clone();
-
-            async move {
-                Database::logged(
-                    "get_trip_info_scheduled",
-                    sqlx::query!(
-                        r"SELECT
-                    st.stop_id,
-                    st.stop_sequence,
-                    st.arrival_time,
-                    st.arrival_time_seconds,
-                    s.stop_name
-                FROM gtfs_stop_times st
-                LEFT JOIN gtfs_stops s ON s.stop_id = st.stop_id
-                WHERE st.trip_id = ?
-                ORDER BY st.stop_sequence",
-                        trip_id
-                    )
-                    .fetch_all(&pool),
-                )
-                .await
-            }
-        },
-        {
-            let trip_id = trip_id.clone();
-            let pool = pool.clone();
-
-            async move {
-                Database::logged(
-                    "get_trip_info_live",
-                    sqlx::query!(
-                        "SELECT
-                          stop_sequence
-                        , arrival_time
-                        , arrival_delay
-                    FROM live_trip_stop_times
-                    WHERE trip_id = ?",
-                        trip_id
-                    )
-                    .fetch_all(&pool),
-                )
-                .await
-            }
-        },
-        {
-            let trip_id = trip_id.clone();
-            let pool = pool.clone();
-
-            async move {
-                Database::logged(
-                    "get_trip_info_live_vehicle",
-                    sqlx::query!(
-                        "SELECT next_stop_sequence, next_stop_arrival_time
-                         FROM live_vehicles WHERE trip_id = ? LIMIT 1",
-                        trip_id
-                    )
-                    .fetch_optional(&pool),
-                )
-                .await
-            }
-        },
+    let (trip_shapes, scheduled, live_data, global_base_midnight) = tokio::join!(
+        fetch_trip_shapes(&trip_id, &pool),
+        fetch_scheduled_stops(&trip_id, &pool),
+        fetch_live_trip_data(&trip_id, &pool),
+        get_base_midnight(),
     );
 
-    let stop_ids = match stop_ids {
-        Ok(stop_ids) => stop_ids,
+    let trip_shapes = match trip_shapes {
+        Ok(rows) => rows,
         Err(e) => {
-            error!(%e, ?trip_id, "Failed to get stop ids");
-            return ApiError::internal("Failed to get stop ids").into_response();
+            error!(%e, ?trip_id, "Failed to get trip shapes");
+            return ApiError::internal("Failed to get trip").into_response();
         }
     };
 
-    let route = {
-        let shapes = match shapes {
-            Ok(shapes) => shapes,
-            Err(e) => {
-                error!(%e, ?trip_id, "Failed to get shapes");
-                return ApiError::internal("Failed to get shapes").into_response();
-            }
-        };
-
-        if shapes.is_empty() {
-            stop_ids
-                .iter()
-                .filter_map(|x| {
-                    Some(
-                        Coord {
-                            latitude: x.latitude?,
-                            longitude: x.longitude?,
-                        }
-                        .as_tuple(),
-                    )
-                })
-                .collect::<Vec<_>>()
-        } else {
-            shapes
-                .iter()
-                .map(|x| {
-                    Coord {
-                        latitude: x.shape_pt_lat,
-                        longitude: x.shape_pt_lon,
-                    }
-                    .as_tuple()
-                })
-                .collect::<Vec<_>>()
-        }
-    };
-
-    let (mut stop_times, schedule_offsets) = {
-        let scheduled = match scheduled {
-            Ok(s) => s,
-            Err(e) => {
-                error!(%e, ?trip_id, "Failed to get scheduled stop times");
-                Vec::new()
-            }
-        };
-        let schedule_offsets: BTreeMap<i64, i64> = scheduled
-            .iter()
-            .filter_map(|s| Some((s.stop_sequence, s.arrival_time_seconds?)))
-            .collect();
-        let live = match live {
-            Ok(l) => l,
-            Err(e) => {
-                error!(%e, ?trip_id, "Failed to get live stop times");
-                Vec::new()
-            }
-        };
-
-        let base_midnight = {
-            let global = get_base_midnight().await;
-            let now = jiff::Timestamp::now().as_second();
-
-            live.iter()
-                .find_map(|l| {
-                    let time = l.arrival_time?;
-                    let offset = scheduled
-                        .iter()
-                        .find(|s| s.stop_sequence == l.stop_sequence)
-                        .and_then(|s| s.arrival_time_seconds)?;
-                    let delay = l.arrival_delay.unwrap_or(0);
-                    let computed = time - delay - offset;
-                    (computed.abs_diff(now) < 86400 * 2).then_some(computed)
-                })
-                .unwrap_or(global)
-        };
-
-        let live_by_seq = live
-            .iter()
-            .map(|l| (l.stop_sequence, l))
-            .collect::<HashMap<_, _>>();
-
-        let mut delay_map = BTreeMap::new();
-        for l in &live {
-            if let Some(delay) = l.arrival_delay {
-                delay_map.insert(l.stop_sequence, delay);
-            } else if let (Some(time), Some(offset)) = (l.arrival_time, {
-                scheduled
-                    .iter()
-                    .find(|s| s.stop_sequence == l.stop_sequence)
-                    .and_then(|s| s.arrival_time_seconds)
-            }) {
-                let sched_unix = base_midnight + offset;
-                let computed_delay = time - sched_unix;
-                delay_map.insert(l.stop_sequence, computed_delay);
-            }
-        }
-
-        let mut stop_times = scheduled
-            .into_iter()
-            .map(|s| {
-                let live_stu = live_by_seq.get(&s.stop_sequence);
-
-                let has_live_prediction =
-                    live_stu.is_some_and(|l| l.arrival_time.is_some() || l.arrival_delay.is_some());
-
-                let propagated_delay = delay_map
-                    .range(..=s.stop_sequence)
-                    .next_back()
-                    .map(|(_, &d)| d);
-
-                let predicted_arrival = if has_live_prediction && let Some(live_stu) = live_stu {
-                    if live_stu.arrival_time.is_some() {
-                        live_stu.arrival_time
-                    } else if let (Some(delay), Some(offset)) =
-                        (live_stu.arrival_delay, s.arrival_time_seconds)
-                    {
-                        Some(base_midnight + offset + delay)
-                    } else {
-                        None
-                    }
-                } else if let (Some(offset), Some(delay)) =
-                    (s.arrival_time_seconds, propagated_delay)
-                {
-                    Some(base_midnight + offset + delay)
-                } else {
-                    None
-                };
-
-                TripStopTime {
-                    stop_id: s.stop_id.clone(),
-                    stop_sequence: s.stop_sequence,
-                    stop_name: s.stop_name.unwrap_or_default(),
-                    arrival_time: predicted_arrival,
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let mut max_time = None;
-        for st in &mut stop_times {
-            let Some(t) = st.arrival_time else { continue };
-
-            if let Some(max) = max_time
-                && t < max
-            {
-                debug!(
-                    stop_id = %st.stop_id,
-                    stop_sequence = st.stop_sequence,
-                    predicted = t,
-                    previous_max = max,
-                    ?trip_id,
-                    "Non-monotonic arrival time detected, clamping to previous"
-                );
-                st.arrival_time = Some(max);
-            }
-
-            max_time = Some(t.max(max_time.unwrap_or(i64::MIN)));
-        }
-
-        (stop_times, schedule_offsets)
-    };
-
-    let live_vehicle = match next_stop_sequence {
-        Ok(row) => row,
-        Err(e) => {
-            error!(%e, ?trip_id, "Failed to get live vehicle");
-            None
-        }
-    };
-
-    let now = jiff::Timestamp::now().as_second();
-
-    if let Some(lv) = live_vehicle
-        && let Some(next_seq) = lv.next_stop_sequence
-    {
-        let anchor_offset = schedule_offsets.get(&next_seq).copied();
-        let fill_anchor = lv.next_stop_arrival_time.map_or(now, |t| t.max(now));
-
-        clear_passed_stops(&mut stop_times, next_seq, now);
-
-        if let Some(anchor_offset) = anchor_offset {
-            interpolate_backward(&mut stop_times, &schedule_offsets, next_seq, now);
-            propagate_forward(
-                &mut stop_times,
-                &schedule_offsets,
-                fill_anchor,
-                anchor_offset,
-                next_seq,
-                now,
-            );
-            enforce_monotonic(&mut stop_times, fill_anchor, next_seq);
-        }
+    if trip_shapes.is_empty() {
+        return ApiError::not_found("Trip not found").into_response();
     }
+
+    let scheduled = match scheduled {
+        Ok(stops) => stops,
+        Err(e) => {
+            error!(%e, ?trip_id, "Failed to get scheduled stop times");
+            return ApiError::internal("Failed to get scheduled stop times").into_response();
+        }
+    };
+
+    let live_data = match live_data {
+        Ok(data) => data,
+        Err(e) => {
+            error!(%e, ?trip_id, "Failed to get live trip data");
+            return ApiError::internal("Failed to get live trip data").into_response();
+        }
+    };
+
+    let TripShapeData { route } = build_route_from_shapes(&trip_shapes, &scheduled);
+    let stop_ids: Vec<String> = scheduled.iter().map(|s| s.stop_id.clone()).collect();
+
+    let stop_times = predict_trip_stop_times(
+        scheduled,
+        &live_data.live,
+        live_data.vehicle,
+        global_base_midnight,
+        &trip_id,
+    );
 
     JsonOrAccept(
         Versioned::new(
             1,
             TripInfo {
-                stop_ids: stop_ids.iter().map(|x| x.stop_id.clone()).collect(),
+                stop_ids,
                 route,
                 stop_times,
             },
@@ -964,6 +748,7 @@ pub async fn get_trip_info(headers: HeaderMap, Path(trip_id): Path<String>) -> i
 struct Coord {
     latitude: f64,
     longitude: f64,
+    sequence: i64,
 }
 impl Coord {
     pub const fn as_tuple(&self) -> (f64, f64) {

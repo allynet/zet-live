@@ -525,8 +525,8 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 }
             };
 
-            let best_base =
-                compute_base_midnight(all_stop_times.iter().flat_map(|(trip_id, stops)| {
+            let best_base = schedule::compute_base_midnight(all_stop_times.iter().flat_map(
+                |(trip_id, stops)| {
                     stops.iter().map(|s| {
                         let offset = schedule_offsets
                             .get(&(trip_id.clone(), {
@@ -538,7 +538,8 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                             .copied();
                         (s.arrival_time, s.arrival_delay, offset)
                     })
-                }));
+                },
+            ));
 
             let mut tx = match Database::pool().begin().await {
                 Ok(tx) => tx,
@@ -795,32 +796,4 @@ fn haversine_distance(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
     let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
 
     6_371_000.0 * c
-}
-
-fn compute_base_midnight(
-    stop_times: impl Iterator<Item = (Option<i64>, Option<i64>, Option<i64>)>,
-) -> i64 {
-    let now = jiff::Timestamp::now().as_second();
-
-    stop_times
-        .filter_map(|(arrival_time, arrival_delay, arrival_time_seconds)| {
-            Some((
-                arrival_time?,
-                arrival_delay.unwrap_or(0),
-                arrival_time_seconds?,
-            ))
-        })
-        .map(|(live_time, delay, offset)| {
-            let base = live_time - delay - offset;
-
-            (base, base.abs_diff(now))
-        })
-        .reduce(|(best_base, best_diff), (base, diff)| {
-            if diff < best_diff && diff < 86400 * 2 {
-                (base, diff)
-            } else {
-                (best_base, best_diff)
-            }
-        })
-        .map_or(0, |(base, _)| base)
 }
