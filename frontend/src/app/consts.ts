@@ -5,10 +5,6 @@ export const SITE_TITLE = "ZET Live";
 export const SITE_DESCRIPTION =
   "Trenutni položaj i red vožnje svih javno dostupnih ZET vozila prikazan uživo";
 
-export const SITE_URL = (
-  (import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined) ?? ""
-).replace(/\/*$/, "");
-
 export const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
 
 export const PLAUSIBLE_SITE_URL =

@@ -15,33 +15,18 @@
     />
 
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link
-      rel="apple-touch-icon"
-      sizes="180x180"
-      href="/apple-touch-icon.png"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="/favicon-32x32.png"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="16x16"
-      href="/favicon-16x16.png"
-    />
     <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111827" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="ZET Live" />
     <link rel="me" href="https://mastodon.social/@allypost" />
 
     <link rel="preconnect" href="https://cdn.igr.ec" />
     <link rel="preconnect" href="https://tiles.openfreemap.org" />
-    <link
-      rel="stylesheet"
-      href="https://cdn.igr.ec/pkg/font/IosevkAlly/full-family.css"
-    />
+    <link rel="stylesheet" href="https://cdn.igr.ec/pkg/font/IosevkAlly/full-family.css" />
 
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Trenutno Stanje | ZET Live" />
@@ -62,38 +47,69 @@
     <meta name="fediverse:creator" content="@Allypost@mastodon.social" />
 
     <script>
-      (function(){
-        var d=matchMedia('(prefers-color-scheme:dark)').matches;
-        function ss(h){return(h>=20||h<6)}
-        var t='light',ms='3d';
-        try{
-          var r=JSON.parse(localStorage.getItem('settings')||'{}');
-          var mm=r.mapThemeMode||'manual';
-          if(mm==='manual')ms=r.mapStyle||'3d';
-          else if(mm==='time'){ms=ss(new Date().getHours())?'3d.dark':'3d'}
-          else ms=d?'3d.dark':'3d';
-          var m=r.uiThemeMode||'manual';
-          if(m==='manual')t=r.uiThemeManual||'light';
-          else if(m==='map')t=ms==='3d.dark'?'dark':'light';
-          else if(m==='time')t=ss(new Date().getHours())?'dark':'light';
-          else t=d?'dark':'light';
-        }catch(e){}
-        if(t==='dark')document.documentElement.classList.add('dark');
+      (function () {
+        var d = matchMedia("(prefers-color-scheme:dark)").matches;
+        function ss(h) {
+          return h >= 20 || h < 6;
+        }
+        var t = "light",
+          ms = "3d";
+        try {
+          var r = JSON.parse(localStorage.getItem("settings") || "{}");
+          var mm = r.mapThemeMode || "manual";
+          if (mm === "manual") ms = r.mapStyle || "3d";
+          else if (mm === "time") {
+            ms = ss(new Date().getHours()) ? "3d.dark" : "3d";
+          } else ms = d ? "3d.dark" : "3d";
+          var m = r.uiThemeMode || "manual";
+          if (m === "manual") t = r.uiThemeManual || "light";
+          else if (m === "map") t = ms === "3d.dark" ? "dark" : "light";
+          else if (m === "time") t = ss(new Date().getHours()) ? "dark" : "light";
+          else t = d ? "dark" : "light";
+        } catch (e) {}
+        if (t === "dark") document.documentElement.classList.add("dark");
       })();
     </script>
   </head>
   <body>
     <div id="app">
-      <div id="loading-fallback" style="display:flex;align-items:center;justify-content:center;height:100%;font-family:sans-serif">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:16px">
-          <h1 id="loading-title" style="font-size:24px;font-weight:bold;margin:0">ZET Live</h1>
-          <div id="loading-spinner" style="width:20px;height:20px;border:2px solid #d1d5db;border-top-color:#111827;border-radius:50%;animation:spin 1s linear infinite"></div>
+      <div
+        id="loading-fallback"
+        style="
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          font-family: sans-serif;
+        "
+      >
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 16px">
+          <h1 id="loading-title" style="font-size: 24px; font-weight: bold; margin: 0">ZET Live</h1>
+          <div
+            id="loading-spinner"
+            style="
+              width: 20px;
+              height: 20px;
+              border: 2px solid #d1d5db;
+              border-top-color: #111827;
+              border-radius: 50%;
+              animation: spin 1s linear infinite;
+            "
+          ></div>
           <noscript>
-            <p style="color:#6b7280;font-size:14px;margin:0">JavaScript is required to use ZET Live.</p>
+            <p style="color: #6b7280; font-size: 14px; margin: 0">
+              JavaScript is required to use ZET Live.
+            </p>
           </noscript>
         </div>
       </div>
-      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+      <style>
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+      </style>
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

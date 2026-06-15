@@ -13,11 +13,16 @@ import { useTheme } from "@/hooks/use-theme";
 import { useStore } from "@/store";
 import { findNextStopIndex } from "@/app/trip-stop-times";
 import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { SettingsButton, SettingsModal } from "./components/settings-modal";
 import { NoticeBar } from "./components/notice-bar";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { useSetting } from "./settings";
+import { PLAUSIBLE_API_URL, PLAUSIBLE_SCRIPT_URL, PLAUSIBLE_SITE_URL } from "./app/consts";
+import imgAppleTouchIcon from "@/assets/img/favicon/apple-touch-icon.png";
+import imgFavicon16x16 from "@/assets/img/favicon/favicon-16x16.png";
+import imgFavicon32x32 from "@/assets/img/favicon/favicon-32x32.png";
+import imgFaviconSvg from "@/assets/img/favicon/favicon.svg";
 
 export function App() {
   useWebSocket();
@@ -119,8 +124,29 @@ export function App() {
     }
   }
 
+  useEffect(() => {
+    if (!(PLAUSIBLE_SCRIPT_URL && PLAUSIBLE_API_URL && PLAUSIBLE_SITE_URL)) {
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.async = true;
+    script.defer = true;
+    script.src = PLAUSIBLE_SCRIPT_URL;
+    script.dataset.domain = new URL(PLAUSIBLE_SITE_URL).hostname;
+    script.dataset.api = PLAUSIBLE_API_URL;
+
+    document.head.appendChild(script);
+  }, []);
+
   return (
     <>
+      <>
+        <link rel="apple-touch-icon" sizes="180x180" href={imgAppleTouchIcon} />
+        <link rel="icon" type="image/png" sizes="16x16" href={imgFavicon16x16} />
+        <link rel="icon" type="image/png" sizes="32x32" href={imgFavicon32x32} />
+        <link rel="icon" type="image/svg+xml" href={imgFaviconSvg} />
+      </>
       <LoadingScreen />
       <MapContainer />
       <BottomSheet
