@@ -11,9 +11,7 @@ pub mod routes;
 use crate::{
     cli::ServerConfig,
     database::Database,
-    proto::{
-        gtfs_realtime::fetcher::spawn_feed_fetcher, gtfs_schedule::fetcher::spawn_schedule_fetcher,
-    },
+    proto::{gbfs, gtfs_realtime, gtfs_schedule},
 };
 
 pub async fn run(server_config: &ServerConfig) -> anyhow::Result<()> {
@@ -26,8 +24,9 @@ pub async fn run(server_config: &ServerConfig) -> anyhow::Result<()> {
 
     crate::admin::init().await;
 
-    spawn_feed_fetcher();
-    spawn_schedule_fetcher();
+    gtfs_realtime::fetcher::spawn_feed_fetcher();
+    gtfs_schedule::fetcher::spawn_schedule_fetcher();
+    gbfs::fetcher::spawn_all_feed_fetchers();
 
     info!("Waiting for initial schedule info and feed");
     {

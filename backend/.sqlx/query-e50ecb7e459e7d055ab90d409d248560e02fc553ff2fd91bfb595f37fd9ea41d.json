@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                        INSERT INTO\n                        gbfs_vehicle_types\n                            ( vehicle_type_id\n                            , name\n                            , form_factor\n                            , propulsion_type\n                            , rider_capacity\n                            , vehicle_image\n                            , description\n                            )\n                        VALUES\n                            ( ?, ?, ?, ?, ?, ?, ? )\n                        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "e50ecb7e459e7d055ab90d409d248560e02fc553ff2fd91bfb595f37fd9ea41d"
+}

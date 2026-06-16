@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM gbfs_rental_hours",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "6563b4418c5bcd89c45c335d1770f05a437a5638d26c14e2af4f7bb44c3706af"
+}

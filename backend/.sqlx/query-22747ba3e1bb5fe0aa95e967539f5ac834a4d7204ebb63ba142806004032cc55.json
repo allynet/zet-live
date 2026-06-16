@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM gbfs_pricing_plans",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "22747ba3e1bb5fe0aa95e967539f5ac834a4d7204ebb63ba142806004032cc55"
+}

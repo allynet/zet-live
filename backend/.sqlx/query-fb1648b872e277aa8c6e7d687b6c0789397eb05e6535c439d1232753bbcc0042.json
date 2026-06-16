@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM gbfs_vehicle_types",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "fb1648b872e277aa8c6e7d687b6c0789397eb05e6535c439d1232753bbcc0042"
+}

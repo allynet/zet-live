@@ -30,6 +30,7 @@ pub fn create_admin_router(state: AdminState) -> Router {
         .route("/settings/{name}", get(get_setting).put(put_setting))
         .route("/sync/realtime", post(force_sync_realtime))
         .route("/sync/static", post(force_sync_static))
+        .route("/sync/gbfs", post(force_sync_gbfs))
         .route("/metadata", get(get_metadata))
         .route("/notify", post(send_notify))
         .layer(axum::middleware::from_fn_with_state(
@@ -118,6 +119,12 @@ async fn force_sync_realtime() -> impl IntoResponse {
 async fn force_sync_static() -> impl IntoResponse {
     debug!("Force static sync triggered via admin API");
     crate::proto::gtfs_schedule::fetcher::force_sync();
+    StatusCode::ACCEPTED.into_response()
+}
+
+async fn force_sync_gbfs() -> impl IntoResponse {
+    debug!("Force GBFS sync triggered via admin API");
+    crate::proto::gbfs::fetcher::force_sync();
     StatusCode::ACCEPTED.into_response()
 }
 

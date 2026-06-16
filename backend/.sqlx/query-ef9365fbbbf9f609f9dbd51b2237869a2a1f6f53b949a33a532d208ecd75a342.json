@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM gbfs_regions",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "ef9365fbbbf9f609f9dbd51b2237869a2a1f6f53b949a33a532d208ecd75a342"
+}
