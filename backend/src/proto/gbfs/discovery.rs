@@ -35,6 +35,12 @@ struct DiscoveredFeed {
 static MAP: LazyLock<RwLock<Option<HashMap<String, Url>>>> = LazyLock::new(|| RwLock::new(None));
 static LOAD_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+/// Drop the cached `{feed_name → url}` map so the next [`resolve_feed_url`]
+/// call re-fetches `gbfs.json`. Used when the admin changes `gbfs_url`.
+pub async fn invalidate() {
+    *MAP.write().await = None;
+}
+
 /// Resolve the URL for a single feed by name (e.g. `station_status`).
 ///
 /// Returns `None` if the feed is genuinely absent from `gbfs.json`, or if the
@@ -109,11 +115,21 @@ async fn load() -> Result<HashMap<String, Url>, ()> {
         return Err(());
     }
 
-    let root = match response.json::<GbfsRoot>().await {
-        Ok(r) => r,
-        Err(e) => {
-            warn!(error = %e, "Failed to decode gbfs.json");
-            return Err(());
+    let root = {
+        let bytes = match super::fetch_bytes_capped(response, 30 * 1024 * 1024).await {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                warn!(error = %e, "Failed to read gbfs.json body");
+                return Err(());
+            }
+        };
+
+        match serde_json::from_slice::<GbfsRoot>(&bytes) {
+            Ok(r) => r,
+            Err(e) => {
+                warn!(error = %e, "Failed to decode gbfs.json");
+                return Err(());
+            }
         }
     };
 

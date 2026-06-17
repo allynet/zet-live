@@ -50,8 +50,6 @@ export function handleStopsUpdate(response: StopsUpdateResponse) {
       ...(response.bounds ? { stopBounds: response.bounds } : {}),
     });
     updateMaxBounds();
-
-    console.log("Updating stops");
   }
 
   const state = useStore.getState();
@@ -183,8 +181,10 @@ function handleGbfsStations(raw: (string | number)[][]) {
     newMap.set(station.getMapId(), station);
   }
 
-  useStore.setState({ gbfsStations: newMap });
-  useStore.setState({ gbfsBounds: recomputeGbfsBounds(newMap) });
+  useStore.setState({
+    gbfsStations: newMap,
+    gbfsBounds: recomputeGbfsBounds(newMap),
+  });
   updateMaxBounds();
 }
 

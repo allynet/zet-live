@@ -7,12 +7,24 @@ type Props = {
 export function GbfsStationSheet({ station }: Props) {
   const bikes = station.numBikesAvailable;
   const docks = station.numDocksAvailable;
+  const rentUrl = new URL("https://app.nextbike.net/station");
+  rentUrl.searchParams.set("id", station.id);
 
   return (
     <div className="px-4 pb-3">
       <div className="grid grid-cols-2 gap-2">
         <Stat label="Bikes available" value={bikes} accent={bikes === 0 ? "empty" : "ok"} />
         <Stat label="Docks free" value={docks} />
+        {bikes && bikes > 0 ? (
+          <a
+            className="bg-primary-container text-primary-container-hover hover:bg-primary-container-hover col-span-2 rounded px-4 py-3 text-center font-semibold transition-colors"
+            target="_blank"
+            rel="noreferrer"
+            href={rentUrl.toString()}
+          >
+            Open App
+          </a>
+        ) : null}
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1.5">

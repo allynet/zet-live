@@ -109,6 +109,11 @@ pub async fn update_setting(
         crate::server::routes::v1::broadcast_notices(&loaded.global_notices).await;
     }
 
+    if name == "gbfsUrl" {
+        crate::proto::gbfs::discovery::invalidate().await;
+        crate::proto::gbfs::fetcher::force_sync();
+    }
+
     debug!(name, "Admin setting updated and reloaded");
     Ok(loaded)
 }

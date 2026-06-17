@@ -145,7 +145,8 @@ export function App() {
   } else if (selectedGbfsStation) {
     sheetTitle = (
       <span className="text-on-surface truncate text-sm font-bold">
-        {selectedGbfsStation.getDisplayName()}
+        <span className="font-light">[Bajs]</span>&nbsp;
+        <span className="capitalize">{selectedGbfsStation.getDisplayName().toLowerCase()}</span>
       </span>
     );
     const bikes = selectedGbfsStation.numBikesAvailable ?? 0;

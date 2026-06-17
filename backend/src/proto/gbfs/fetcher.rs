@@ -203,17 +203,33 @@ async fn fetch_and_write<F: GbfsFeed>(
         return Err(FetcherError::Fetch(e));
     }
 
-    let envelope: Envelope<F::Data> = match response.json().await {
-        Ok(envelope) => envelope,
-        Err(e) => {
-            admin::metadata::write_metadata(
-                F::METADATA_NAME,
-                &admin::metadata::MetadataEntry::error()
-                    .with_error_message(e.to_string())
-                    .with_duration(start.elapsed()),
-            )
-            .await;
-            return Err(FetcherError::Fetch(e));
+    let envelope: Envelope<F::Data> = {
+        let bytes = match super::fetch_bytes_capped(response, 30 * 1024 * 1024).await {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                admin::metadata::write_metadata(
+                    F::METADATA_NAME,
+                    &admin::metadata::MetadataEntry::error()
+                        .with_error_message(e.to_string())
+                        .with_duration(start.elapsed()),
+                )
+                .await;
+                return Err(FetcherError::Body(e));
+            }
+        };
+
+        match serde_json::from_slice(&bytes) {
+            Ok(envelope) => envelope,
+            Err(e) => {
+                admin::metadata::write_metadata(
+                    F::METADATA_NAME,
+                    &admin::metadata::MetadataEntry::error()
+                        .with_error_message(e.to_string())
+                        .with_duration(start.elapsed()),
+                )
+                .await;
+                return Err(FetcherError::Decode(e));
+            }
         }
     };
 
@@ -254,6 +270,12 @@ async fn fetch_and_write<F: GbfsFeed>(
 pub enum FetcherError {
     #[error("Failed to fetch GBFS feed: {0}")]
     Fetch(#[from] reqwest::Error),
+
+    #[error("Failed to read GBFS feed body: {0}")]
+    Body(#[from] super::FetchBytesError),
+
+    #[error("Failed to decode GBFS feed JSON: {0}")]
+    Decode(#[from] serde_json::Error),
 
     #[error("Failed to persist GBFS feed data: {0}")]
     Write(#[from] anyhow::Error),

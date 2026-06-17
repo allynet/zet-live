@@ -159,7 +159,7 @@ async fn handle_transmission(
             sender
                 .lock()
                 .await
-                .send(Message::Binary(Bytes::copy_from_slice(data)))
+                .send(Message::Binary(Bytes::clone(data)))
                 .await
                 .is_ok()
         }

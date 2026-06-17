@@ -17,7 +17,7 @@ pub struct VehicleType {
     pub rider_capacity: Option<i64>,
     #[serde(default)]
     pub vehicle_image: Option<String>,
-    #[serde(default, rename = "_description")]
+    #[serde(default, alias = "_description")]
     pub description: Option<String>,
 }
 

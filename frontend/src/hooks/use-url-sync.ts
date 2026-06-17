@@ -15,6 +15,8 @@ function buildUrlParams(): string {
     for (const id of selection.ids) {
       params.append("stop", id);
     }
+  } else if (selection?.type === "gbfs-station") {
+    params.set("station", selection.id);
   }
 
   return params.toString();
@@ -25,6 +27,7 @@ function applyUrlParams(params: URLSearchParams) {
   const tripParam = params.get("trip");
   const followParam = params.get("follow");
   const stopParams = params.getAll("stop");
+  const stationParam = params.get("station");
 
   if (vehicleParam) {
     useStore.getState().selectVehicle(vehicleParam, tripParam ?? "");
@@ -33,6 +36,8 @@ function applyUrlParams(params: URLSearchParams) {
     }
   } else if (stopParams.length > 0) {
     useStore.getState().selectStop(stopParams);
+  } else if (stationParam) {
+    useStore.getState().selectGbfsStation(stationParam);
   } else {
     useStore.getState().clearSelection();
   }
@@ -96,31 +101,41 @@ export function useUrlSync() {
   }, [handlePopState]);
 
   const simpleStops = useStore((s) => s.simpleStops);
+  const gbfsStations = useStore((s) => s.gbfsStations);
 
   useEffect(() => {
+    if (initializedRef.current) return;
+
     const params = new URLSearchParams(location.search);
     const vehicleParam = params.get("vehicle");
     const tripParam = params.get("trip");
     const stopParams = params.getAll("stop");
+    const stationParam = params.get("station");
+
+    const hasStops = Object.keys(simpleStops).length > 0;
+    const hasStations = gbfsStations.size > 0;
 
     if (vehicleParam) {
+      if (!hasStops) return;
       const follow = params.get("follow") === "1";
-      if (Object.keys(simpleStops).length > 0) {
-        isRestoringRef.current = true;
-        useStore.getState().selectVehicle(vehicleParam, tripParam ?? "");
-        if (follow) {
-          useStore.getState().setFollowEnabled(true);
-        }
-        isRestoringRef.current = false;
+      isRestoringRef.current = true;
+      useStore.getState().selectVehicle(vehicleParam, tripParam ?? "");
+      if (follow) {
+        useStore.getState().setFollowEnabled(true);
       }
+      isRestoringRef.current = false;
     } else if (stopParams.length > 0) {
-      if (Object.keys(simpleStops).length > 0) {
-        isRestoringRef.current = true;
-        useStore.getState().selectStop(stopParams);
-        isRestoringRef.current = false;
-      }
+      if (!hasStops) return;
+      isRestoringRef.current = true;
+      useStore.getState().selectStop(stopParams);
+      isRestoringRef.current = false;
+    } else if (stationParam) {
+      if (!hasStations) return;
+      isRestoringRef.current = true;
+      useStore.getState().selectGbfsStation(stationParam);
+      isRestoringRef.current = false;
     }
 
     initializedRef.current = true;
-  }, [simpleStops]);
+  }, [simpleStops, gbfsStations]);
 }

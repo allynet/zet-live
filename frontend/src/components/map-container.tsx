@@ -210,6 +210,8 @@ export function MapContainer() {
   const selectedVehicleId = selection?.type === "vehicle" ? selection.id : null;
   const selectedStopTripIds = stopSelection?.tripIds ?? null;
   const selectedGbfsStationId = selection?.type === "gbfs-station" ? selection.id : null;
+  const gbfsLayerVisible =
+    showGbfsStations && (selection === null || selection.type === "gbfs-station");
   const followingRoute = vehicleSelection?.route ?? null;
 
   const selectedVehicle =
@@ -536,7 +538,7 @@ export function MapContainer() {
                 "icon-ignore-placement": true,
                 "symbol-z-order": "source",
                 "symbol-sort-key": ["get", "sortKey"],
-                visibility: showGbfsStations ? "visible" : "none",
+                visibility: gbfsLayerVisible ? "visible" : "none",
               }}
             />
           </Source>
