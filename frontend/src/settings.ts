@@ -9,7 +9,7 @@ const DEFAULTS = {
   mapStyle: "3d" as MapStyleId,
   mapThemeMode: "manual" as MapThemeMode,
   wakeLockEnabled: true,
-  uiThemeMode: "manual" as UiThemeMode,
+  uiThemeMode: "map" as UiThemeMode,
   uiThemeManual: "light" as UiTheme,
   showGbfsStations: true,
   showBuses: true,
