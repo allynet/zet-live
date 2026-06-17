@@ -10,6 +10,7 @@ import {
   type UiTheme,
 } from "@/settings";
 import type { ReactNode } from "react";
+import { cn } from "@/utils/style";
 
 const MAP_STYLES: { id: MapStyleId; label: string }[] = [
   { id: "3d", label: "3D" },
@@ -131,24 +132,15 @@ export function SettingsModal() {
                     body: (
                       <div className="grid grid-cols-2 gap-2">
                         {UI_THEME_MODES.map((m) => (
-                          <button
+                          <ItemSelect
                             key={m.id}
-                            type="button"
-                            onClick={() => {
+                            selected={uiThemeMode === m.id}
+                            title={m.label}
+                            description={m.description}
+                            onSelect={() => {
                               updateSetting("uiThemeMode", m.id);
                             }}
-                            className={`cursor-pointer rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${
-                              uiThemeMode === m.id
-                                ? "border-primary bg-primary-container text-on-primary-container"
-                                : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
-                            }`}
-                            aria-selected={uiThemeMode === m.id}
-                          >
-                            <span className="block">{m.label}</span>
-                            <span className="text-on-surface-muted block text-xs font-normal">
-                              {m.description}
-                            </span>
-                          </button>
+                          />
                         ))}
                       </div>
                     ),
@@ -161,21 +153,14 @@ export function SettingsModal() {
                           body: (
                             <div className="grid grid-cols-2 gap-2">
                               {UI_THEMES.map((t) => (
-                                <button
+                                <ItemSelect
                                   key={t.id}
-                                  type="button"
-                                  onClick={() => {
+                                  selected={uiThemeManual === t.id}
+                                  title={t.label}
+                                  onSelect={() => {
                                     updateSetting("uiThemeManual", t.id);
                                   }}
-                                  className={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                                    uiThemeManual === t.id
-                                      ? "border-primary bg-primary-container text-on-primary-container"
-                                      : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
-                                  }`}
-                                  aria-selected={uiThemeManual === t.id}
-                                >
-                                  {t.label}
-                                </button>
+                                />
                               ))}
                             </div>
                           ),
@@ -194,24 +179,15 @@ export function SettingsModal() {
                     body: (
                       <div className="grid grid-cols-3 gap-2">
                         {MAP_THEME_MODES.map((m) => (
-                          <button
+                          <ItemSelect
                             key={m.id}
-                            type="button"
-                            onClick={() => {
+                            selected={mapThemeMode === m.id}
+                            title={m.label}
+                            description={m.description}
+                            onSelect={() => {
                               updateSetting("mapThemeMode", m.id);
                             }}
-                            className={`cursor-pointer rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${
-                              mapThemeMode === m.id
-                                ? "border-primary bg-primary-container text-on-primary-container"
-                                : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
-                            }`}
-                            aria-selected={mapThemeMode === m.id}
-                          >
-                            <span className="block">{m.label}</span>
-                            <span className="text-on-surface-muted block text-xs font-normal">
-                              {m.description}
-                            </span>
-                          </button>
+                          />
                         ))}
                       </div>
                     ),
@@ -224,67 +200,48 @@ export function SettingsModal() {
                           body: (
                             <div className="grid grid-cols-2 gap-2">
                               {MAP_STYLES.map((s) => (
-                                <button
+                                <ItemSelect
                                   key={s.id}
-                                  type="button"
-                                  onClick={() => {
+                                  selected={currentStyle === s.id}
+                                  title={s.label}
+                                  onSelect={() => {
                                     updateSetting("mapStyle", s.id);
                                   }}
-                                  className={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                                    currentStyle === s.id
-                                      ? "border-primary bg-primary-container text-on-primary-container"
-                                      : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
-                                  }`}
-                                  aria-selected={currentStyle === s.id}
-                                >
-                                  {s.label}
-                                </button>
+                                  className="text-center"
+                                />
                               ))}
                             </div>
                           ),
                         },
                       ]
                     : []),
-                ]}
-              />
-
-              <SettingsCategory
-                title="Layers"
-                sections={[
                   {
-                    title: "Buses",
-                    description: "Show live bus positions on the map.",
+                    title: "Displayed items",
+                    description: "Which features should be displayed on the map.",
                     body: (
-                      <LayerSwitch
-                        enabled={showBuses}
-                        onToggle={() => {
-                          updateSetting("showBuses", !showBuses);
-                        }}
-                      />
-                    ),
-                  },
-                  {
-                    title: "Trams",
-                    description: "Show live tram positions on the map.",
-                    body: (
-                      <LayerSwitch
-                        enabled={showTrams}
-                        onToggle={() => {
-                          updateSetting("showTrams", !showTrams);
-                        }}
-                      />
-                    ),
-                  },
-                  {
-                    title: "Bike Stations",
-                    description: "Show nextbike (Bajs) stations with live bike availability.",
-                    body: (
-                      <LayerSwitch
-                        enabled={showGbfsStations}
-                        onToggle={() => {
-                          updateSetting("showGbfsStations", !showGbfsStations);
-                        }}
-                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <OnOffSwitch
+                          enabled={showBuses}
+                          title="Buses"
+                          onToggle={() => {
+                            updateSetting("showBuses", !showBuses);
+                          }}
+                        />
+                        <OnOffSwitch
+                          enabled={showTrams}
+                          title="Trams"
+                          onToggle={() => {
+                            updateSetting("showTrams", !showTrams);
+                          }}
+                        />
+                        <OnOffSwitch
+                          enabled={showGbfsStations}
+                          title="Bajs Stations"
+                          onToggle={() => {
+                            updateSetting("showGbfsStations", !showGbfsStations);
+                          }}
+                        />
+                      </div>
                     ),
                   },
                 ]}
@@ -298,30 +255,13 @@ export function SettingsModal() {
                     description:
                       "Prevent your screen from turning off while tracking transit. Uses the browser Wake Lock API.",
                     body: (
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={wakeLockEnabled}
-                        onClick={() => {
+                      <OnOffSwitch
+                        enabled={wakeLockEnabled}
+                        title={wakeLockEnabled ? "Screen stays on" : "Screen can turn off"}
+                        onToggle={() => {
                           updateSetting("wakeLockEnabled", !wakeLockEnabled);
                         }}
-                        className={`flex w-full cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
-                          wakeLockEnabled
-                            ? "border-success bg-success-container text-on-success-container"
-                            : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
-                        }`}
-                      >
-                        <span>{wakeLockEnabled ? "Screen stays on" : "Screen can turn off"}</span>
-                        <span
-                          className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                            wakeLockEnabled
-                              ? "bg-success-container text-on-success-container"
-                              : "bg-surface-dim text-on-surface-muted"
-                          }`}
-                        >
-                          {wakeLockEnabled ? "On" : "Off"}
-                        </span>
-                      </button>
+                      />
                     ),
                   },
                 ]}
@@ -367,29 +307,74 @@ export function SettingsButton() {
   );
 }
 
-function LayerSwitch(props: { enabled: boolean; onToggle: () => void }) {
+function OnOffSwitch(props: {
+  enabled: boolean;
+  title?: string;
+  description?: string;
+  className?: string;
+  onToggle: () => void;
+}) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={props.enabled}
+      tabIndex={0}
       onClick={props.onToggle}
-      className={`flex w-full cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
+      className={cn(
+        "flex w-full cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors",
         props.enabled
           ? "border-success bg-success-container text-on-success-container"
-          : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
-      }`}
+          : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover",
+        props.className,
+      )}
     >
-      <span>{props.enabled ? "Visible" : "Hidden"}</span>
+      <div className="flex flex-col gap-1 text-left">
+        <span>{props.title ?? (props.enabled ? "Visible" : "Hidden")}</span>
+        {props.description ? (
+          <span className="text-on-surface-muted text-xs font-normal">{props.description}</span>
+        ) : null}
+      </div>
       <span
-        className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
+        className={cn(
+          "ml-2 rounded-full px-2 py-0.5 text-xs font-semibold",
           props.enabled
             ? "bg-success-container text-on-success-container"
-            : "bg-surface-dim text-on-surface-muted"
-        }`}
+            : "bg-surface-dim text-on-surface-muted",
+        )}
       >
         {props.enabled ? "On" : "Off"}
       </span>
+    </button>
+  );
+}
+
+function ItemSelect(props: {
+  selected: boolean;
+  title: string;
+  description?: string;
+  onSelect: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={props.selected}
+      tabIndex={0}
+      onClick={props.onSelect}
+      className={cn(
+        "cursor-pointer rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors",
+        props.selected
+          ? "border-primary bg-primary-container text-on-primary-container"
+          : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover",
+        props.className,
+      )}
+    >
+      <span className="block">{props.title}</span>
+      {props.description ? (
+        <span className="text-on-surface-muted block text-xs font-normal">{props.description}</span>
+      ) : null}
     </button>
   );
 }

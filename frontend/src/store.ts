@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { subscribeWithSelector } from "zustand/middleware";
 import { z } from "zod";
 import type { VehicleV1 } from "./app/entity/v1/vehicle";
 import type { StopV1 } from "./app/entity/v1/stop";
@@ -16,14 +17,29 @@ export type VehicleLocationPair = {
   from: [number, number];
   to: [number, number];
   color: string;
+  vehicleType: "bus" | "tram";
 };
 
 export type StopArrivalTime = z.infer<typeof stopArrivalTimeSchema>;
 
-export type SelectedStop = {
+export type Selection =
+  | { type: "vehicle"; id: string; tripId: string }
+  | { type: "stop"; ids: string[] }
+  | { type: "gbfs-station"; id: string };
+
+export type VehicleSelection = {
+  route: [number, number][] | null;
+  tripStopTimes: TripStopTimeEntry[] | null;
+  fetchError: string | null;
+  followEnabled: boolean;
+};
+
+export type StopSelection = {
   name: string;
-  ids: string[];
   routes: string[];
+  tripIds: Set<string> | null;
+  arrivalTimes: StopArrivalTime[] | null;
+  fetchError: string | null;
 };
 
 export type StoreState = {
@@ -37,27 +53,14 @@ export type StoreState = {
 
   gbfsStations: Map<string, GbfsStationV1>;
   gbfsBounds: [[number, number], [number, number]];
-  selectedGbfsStationId: string | null;
 
-  followingVehicleId: string | null;
-  followEnabled: boolean;
-  followingStopIds: string[];
-  followingTripId: string | null;
-  followingTripIds: Set<string> | null;
-
-  deltaMoveLines: VehicleLocationPair[];
-  followingRoute: [number, number][] | null;
-
-  tripStopTimes: TripStopTimeEntry[] | null;
-
-  stopArrivalTimes: StopArrivalTime[] | null;
-
-  selectedStop: SelectedStop | null;
+  selection: Selection | null;
+  vehicleSelection: VehicleSelection | null;
+  stopSelection: StopSelection | null;
 
   displayedStops: GroupedStop[];
 
-  tripFetchError: string | null;
-  stopFetchError: string | null;
+  deltaMoveLines: VehicleLocationPair[];
 
   lastUpdate: number | null;
   lastError: string | null;
@@ -73,6 +76,12 @@ export type StoreState = {
   searchMatchedStopIds: Set<string> | null;
 
   globalNotices: GlobalNotice[] | null;
+
+  selectVehicle: (id: string, tripId: string, flyTo?: boolean) => void;
+  selectStop: (ids: string[]) => void;
+  selectGbfsStation: (id: string, flyTo?: boolean) => void;
+  clearSelection: () => void;
+  setFollowEnabled: (enabled: boolean) => void;
 };
 
 const DEFAULT_BOUNDS: [[number, number], [number, number]] = [
@@ -80,54 +89,143 @@ const DEFAULT_BOUNDS: [[number, number], [number, number]] = [
   [89.5, 89.5],
 ];
 
-export const useStore = create<StoreState>()(() => ({
-  vehicles: new Map(),
-  vehicleBounds: DEFAULT_BOUNDS,
+function vehicleMapKey(id: string) {
+  return `vehicle-${id}`;
+}
 
-  simpleStops: {},
-  stopsGrouped: [],
-  activeStopIds: new Set(),
-  stopBounds: DEFAULT_BOUNDS,
+function gbfsStationMapKey(id: string) {
+  return `gbfs-station-${id}`;
+}
 
-  gbfsStations: new Map(),
-  gbfsBounds: DEFAULT_BOUNDS,
-  selectedGbfsStationId: null,
+function resolveStopDisplayName(ids: string[], simpleStops: Record<string, StopV1>): string {
+  for (const id of ids) {
+    const name = simpleStops[id]?.name;
+    if (name) return name;
+  }
+  return "Unknown stop";
+}
 
-  followingVehicleId: null,
-  followEnabled: false,
-  followingStopIds: [],
-  followingTripId: null,
-  followingTripIds: null,
+function buildStopDisplayedStops(
+  ids: string[],
+  simpleStops: Record<string, StopV1>,
+): GroupedStop[] {
+  return ids
+    .map((id) => simpleStops[id])
+    .filter((stop): stop is StopV1 => Boolean(stop))
+    .map((stop) => ({ name: stop.name, lat: stop.lat, lng: stop.lng, ids: [stop.id] }));
+}
 
-  deltaMoveLines: [],
-  followingRoute: null,
+export const useStore = create<StoreState>()(
+  subscribeWithSelector((set, get) => ({
+    vehicles: new Map(),
+    vehicleBounds: DEFAULT_BOUNDS,
 
-  tripStopTimes: null,
+    simpleStops: {},
+    stopsGrouped: [],
+    activeStopIds: new Set(),
+    stopBounds: DEFAULT_BOUNDS,
 
-  stopArrivalTimes: null,
+    gbfsStations: new Map(),
+    gbfsBounds: DEFAULT_BOUNDS,
 
-  selectedStop: null,
+    selection: null,
+    vehicleSelection: null,
+    stopSelection: null,
 
-  displayedStops: [],
+    displayedStops: [],
 
-  tripFetchError: null,
-  stopFetchError: null,
+    deltaMoveLines: [],
 
-  lastUpdate: null,
-  lastError: null,
-  wsConnected: false,
+    lastUpdate: null,
+    lastError: null,
+    wsConnected: false,
 
-  mapReady: false,
+    mapReady: false,
 
-  maxBounds: null,
+    maxBounds: null,
 
-  flyToTarget: null,
+    flyToTarget: null,
 
-  searchMatchedVehicleMapIds: null,
-  searchMatchedStopIds: null,
+    searchMatchedVehicleMapIds: null,
+    searchMatchedStopIds: null,
 
-  globalNotices: null,
-}));
+    globalNotices: null,
+
+    selectVehicle: (id, tripId, flyTo = false) => {
+      set({
+        selection: { type: "vehicle", id, tripId },
+        vehicleSelection: {
+          route: null,
+          tripStopTimes: null,
+          fetchError: null,
+          followEnabled: false,
+        },
+        stopSelection: null,
+      });
+
+      if (flyTo) {
+        const vehicle = get().vehicles.get(vehicleMapKey(id));
+        if (vehicle) {
+          set({ flyToTarget: { longitude: vehicle.lng, latitude: vehicle.lat } });
+        }
+      }
+    },
+
+    selectStop: (ids) => {
+      const { simpleStops } = get();
+      const name = resolveStopDisplayName(ids, simpleStops);
+
+      set({
+        selection: { type: "stop", ids },
+        stopSelection: {
+          name,
+          routes: [],
+          tripIds: null,
+          arrivalTimes: null,
+          fetchError: null,
+        },
+        vehicleSelection: null,
+        displayedStops: buildStopDisplayedStops(ids, simpleStops),
+      });
+    },
+
+    selectGbfsStation: (id, flyTo = false) => {
+      set({
+        selection: { type: "gbfs-station", id },
+        vehicleSelection: null,
+        stopSelection: null,
+      });
+
+      if (flyTo) {
+        const station = get().gbfsStations.get(gbfsStationMapKey(id));
+        if (station) {
+          set({ flyToTarget: { longitude: station.lng, latitude: station.lat } });
+        }
+      }
+    },
+
+    clearSelection: () => {
+      const { stopsGrouped } = get();
+      set({
+        selection: null,
+        vehicleSelection: null,
+        stopSelection: null,
+        displayedStops: stopsGrouped,
+      });
+    },
+
+    setFollowEnabled: (enabled) => {
+      const { vehicleSelection } = get();
+      if (!vehicleSelection) return;
+      set({
+        vehicleSelection: {
+          ...vehicleSelection,
+          followEnabled: enabled,
+        },
+      });
+    },
+  })),
+);
 
 export function updateMaxBounds() {
   const { stopBounds, vehicleBounds, gbfsBounds } = useStore.getState();

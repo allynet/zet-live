@@ -1,21 +1,18 @@
 import { useRef, useEffect, useCallback } from "react";
 import { useStore } from "@/store";
-import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
 
 const DEBOUNCE_MS = 300;
 
 function buildUrlParams(): string {
-  const { followingVehicleId, followingTripId, followingStopIds, followEnabled } =
-    useStore.getState();
+  const { selection, vehicleSelection } = useStore.getState();
   const params = new URLSearchParams();
 
-  if (followingVehicleId) {
-    const rawId = followingVehicleId.replace(/^vehicle-/, "");
-    params.set("vehicle", rawId);
-    if (followingTripId) params.set("trip", followingTripId);
-    if (followEnabled) params.set("follow", "1");
-  } else if (followingStopIds.length > 0) {
-    for (const id of followingStopIds) {
+  if (selection?.type === "vehicle") {
+    params.set("vehicle", selection.id);
+    if (selection.tripId) params.set("trip", selection.tripId);
+    if (vehicleSelection?.followEnabled) params.set("follow", "1");
+  } else if (selection?.type === "stop") {
+    for (const id of selection.ids) {
       params.append("stop", id);
     }
   }
@@ -30,14 +27,14 @@ function applyUrlParams(params: URLSearchParams) {
   const stopParams = params.getAll("stop");
 
   if (vehicleParam) {
-    selectVehicle(vehicleParam, tripParam ?? "");
+    useStore.getState().selectVehicle(vehicleParam, tripParam ?? "");
     if (followParam === "1") {
-      useStore.setState({ followEnabled: true });
+      useStore.getState().setFollowEnabled(true);
     }
   } else if (stopParams.length > 0) {
-    selectStop(stopParams);
+    useStore.getState().selectStop(stopParams);
   } else {
-    clearSelection();
+    useStore.getState().clearSelection();
   }
 }
 
@@ -46,10 +43,8 @@ export function useUrlSync() {
   const initializedRef = useRef(false);
   const debounceRef = useRef<number | null>(null);
 
-  const followingVehicleId = useStore((s) => s.followingVehicleId);
-  const followingTripId = useStore((s) => s.followingTripId);
-  const followingStopIds = useStore((s) => s.followingStopIds);
-  const followEnabled = useStore((s) => s.followEnabled);
+  const selection = useStore((s) => s.selection);
+  const followEnabled = useStore((s) => s.vehicleSelection?.followEnabled ?? false);
 
   const syncUrl = useCallback((push: boolean) => {
     const newSearch = buildUrlParams();
@@ -77,7 +72,7 @@ export function useUrlSync() {
       debounceRef.current = null;
       syncUrl(true);
     }, DEBOUNCE_MS);
-  }, [followingVehicleId, followingTripId, followingStopIds, followEnabled, syncUrl]);
+  }, [selection, followEnabled, syncUrl]);
 
   useEffect(() => {
     return () => {
@@ -112,16 +107,16 @@ export function useUrlSync() {
       const follow = params.get("follow") === "1";
       if (Object.keys(simpleStops).length > 0) {
         isRestoringRef.current = true;
-        selectVehicle(vehicleParam, tripParam ?? "");
+        useStore.getState().selectVehicle(vehicleParam, tripParam ?? "");
         if (follow) {
-          useStore.setState({ followEnabled: true });
+          useStore.getState().setFollowEnabled(true);
         }
         isRestoringRef.current = false;
       }
     } else if (stopParams.length > 0) {
       if (Object.keys(simpleStops).length > 0) {
         isRestoringRef.current = true;
-        selectStop(stopParams);
+        useStore.getState().selectStop(stopParams);
         isRestoringRef.current = false;
       }
     }

@@ -13,9 +13,8 @@ import mapStyle3d from "@/data/maps/style/3d.json";
 import mapStyle3dDark from "@/data/maps/style/3d.dark.json";
 import mapStyleFlat from "@/data/maps/style/flat.json";
 import mapStyleSatellite from "@/data/maps/style/satellite.json";
-import { useStore } from "@/store";
+import { useStore, type VehicleLocationPair } from "@/store";
 import { type MapStyleId, useSetting } from "@/settings";
-import { selectVehicle, selectStop, selectGbfsStation, clearSelection } from "@/state-actions";
 import { useGeolocationPermission } from "@/hooks/use-geolocation-permission";
 import { themeStore } from "@/hooks/use-theme";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -65,8 +64,8 @@ function createArrowHeadImage(color: string): Promise<HTMLImageElement> {
 
 function buildVehiclesGeoJson(
   vehicles: Map<string, VehicleV1>,
-  followingVehicleId: string | null,
-  followingTripIds: Set<string> | null,
+  selectedVehicleId: string | null,
+  selectedStopTripIds: Set<string> | null,
   searchMatchedVehicleIds: Set<string> | null,
 ) {
   const all = Array.from(vehicles.values());
@@ -76,10 +75,9 @@ function buildVehiclesGeoJson(
   return {
     type: "FeatureCollection" as const,
     features: filtered.map((v) => {
-      const mapId = v.getMapId();
       const isFollowing =
-        followingVehicleId === mapId || (followingTripIds?.has(v.tripId) ?? false);
-      const hasFollowing = followingVehicleId !== null || followingTripIds !== null;
+        selectedVehicleId === v.id || (selectedStopTripIds?.has(v.tripId) ?? false);
+      const hasFollowing = selectedVehicleId !== null || selectedStopTripIds !== null;
       const isBus = v.routeId.length > 2;
 
       return {
@@ -99,14 +97,13 @@ function buildVehiclesGeoJson(
   };
 }
 
-function buildDeltaMoveFeatures(
-  deltaMoveLines: { from: [number, number]; to: [number, number]; color: string }[],
-) {
+function buildDeltaMoveFeatures(deltaMoveLines: VehicleLocationPair[]) {
   return {
     type: "FeatureCollection" as const,
     features: deltaMoveLines.map((x) => ({
       type: "Feature" as const,
-      properties: { color: x.color },
+      properties: { color: x.color, vehicleType: x.vehicleType },
+      beforeId: "route-stop-dot",
       geometry: {
         type: "LineString" as const,
         coordinates: [x.from, x.to],
@@ -192,11 +189,11 @@ export function MapContainer() {
   const resolvedMapStyleId = themeStore((s) => s.resolvedMapStyleId);
   const mapStyle = styleMap.get(resolvedMapStyleId) ?? (mapStyle3d as StyleSpecification);
   const vehicles = useStore((s) => s.vehicles);
-  const followingVehicleId = useStore((s) => s.followingVehicleId);
-  const followingTripIds = useStore((s) => s.followingTripIds);
+  const selection = useStore((s) => s.selection);
+  const vehicleSelection = useStore((s) => s.vehicleSelection);
+  const stopSelection = useStore((s) => s.stopSelection);
   const deltaMoveLines = useStore((s) => s.deltaMoveLines);
   const displayedStops = useStore((s) => s.displayedStops);
-  const followingRoute = useStore((s) => s.followingRoute);
   const maxBounds = useStore((s) => s.maxBounds);
   const geolocPermission = useGeolocationPermission();
   const searchMatchedVehicleIds = useStore((s) => s.searchMatchedVehicleMapIds);
@@ -204,29 +201,33 @@ export function MapContainer() {
   const searchActive = searchMatchedVehicleIds !== null || searchMatchedStopIds !== null;
 
   const gbfsStations = useStore((s) => s.gbfsStations);
-  const selectedGbfsStationId = useStore((s) => s.selectedGbfsStationId);
   const showGbfsStations = useSetting("showGbfsStations");
   const showBuses = useSetting("showBuses");
   const showTrams = useSetting("showTrams");
 
-  const followEnabled = useStore((s) => s.followEnabled);
   const flyToTarget = useStore((s) => s.flyToTarget);
 
-  const selectedVehicle = followingVehicleId ? (vehicles.get(followingVehicleId) ?? null) : null;
+  const selectedVehicleId = selection?.type === "vehicle" ? selection.id : null;
+  const selectedStopTripIds = stopSelection?.tripIds ?? null;
+  const selectedGbfsStationId = selection?.type === "gbfs-station" ? selection.id : null;
+  const followingRoute = vehicleSelection?.route ?? null;
+
+  const selectedVehicle =
+    selectedVehicleId !== null ? (vehicles.get(`vehicle-${selectedVehicleId}`) ?? null) : null;
   const nextStopId = selectedVehicle?.nextStopId ?? null;
 
   const handleClick = useCallback((e: MapLayerMouseEvent) => {
     const vehicleFeature = e.features?.find((x) => x.source === "vehicles");
     if (vehicleFeature) {
       const props = vehicleFeature.properties as Record<string, unknown>;
-      selectVehicle(String(props.id), String(props.tripId), true);
+      useStore.getState().selectVehicle(String(props.id), String(props.tripId), true);
       return;
     }
 
     const stationFeature = e.features?.find((x) => x.source === "gbfs-stations");
     if (stationFeature) {
       const props = stationFeature.properties as Record<string, unknown>;
-      selectGbfsStation(String(props.id), true);
+      useStore.getState().selectGbfsStation(String(props.id), true);
       return;
     }
 
@@ -235,11 +236,11 @@ export function MapContainer() {
       const stopIds = JSON.parse(
         ((stopFeature.properties as Record<string, unknown>)?.ids as string) ?? "[]",
       ) as string[];
-      selectStop(stopIds);
+      useStore.getState().selectStop(stopIds);
       return;
     }
 
-    clearSelection();
+    useStore.getState().clearSelection();
   }, []);
 
   const onLoad = useCallback(() => {
@@ -259,14 +260,13 @@ export function MapContainer() {
   }, []);
 
   const onDragStart = useCallback(() => {
-    if (useStore.getState().followEnabled) {
-      useStore.setState({ followEnabled: false });
-    }
+    useStore.getState().setFollowEnabled(false);
   }, []);
 
   useEffect(() => {
-    if (!followEnabled || !followingVehicleId) return;
-    const vehicle = vehicles.get(followingVehicleId);
+    if (selection?.type !== "vehicle") return;
+    if (!vehicleSelection?.followEnabled) return;
+    const vehicle = vehicles.get(`vehicle-${selection.id}`);
     if (!vehicle) return;
 
     const map = mapRef.current?.getMap();
@@ -278,7 +278,7 @@ export function MapContainer() {
       center: [vehicle.lng, vehicle.lat - offset],
       duration: 500,
     });
-  }, [followEnabled, followingVehicleId, vehicles]);
+  }, [selection, vehicleSelection, vehicles]);
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
@@ -351,8 +351,13 @@ export function MapContainer() {
   const vehiclesRafId = useRef<number | null>(null);
   const vehiclesGeoJson = useMemo(
     () =>
-      buildVehiclesGeoJson(vehicles, followingVehicleId, followingTripIds, searchMatchedVehicleIds),
-    [vehicles, followingVehicleId, followingTripIds, searchMatchedVehicleIds],
+      buildVehiclesGeoJson(
+        vehicles,
+        selectedVehicleId,
+        selectedStopTripIds,
+        searchMatchedVehicleIds,
+      ),
+    [vehicles, selectedVehicleId, selectedStopTripIds, searchMatchedVehicleIds],
   );
   useEffect(() => {
     if (!iconsReady) return;
@@ -440,8 +445,7 @@ export function MapContainer() {
     ensureStationIcons(map, stationIconsToEnsure);
   }, [iconsReady, stationIconsToEnsure]);
 
-  const isFollowingSomething =
-    followingVehicleId !== null || followingTripIds !== null || followingRoute !== null;
+  const isFollowingSomething = selection !== null;
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
@@ -542,6 +546,7 @@ export function MapContainer() {
           <Layer
             id="delta-move-lines"
             type="line"
+            filter={["match", ["get", "vehicleType"], "tram", showTrams, "bus", showBuses, true]}
             paint={{
               "line-width": 5,
               "line-color": ["get", "color"],
@@ -556,6 +561,7 @@ export function MapContainer() {
           <Layer
             id="delta-move-lines-arrow"
             type="symbol"
+            filter={["match", ["get", "vehicleType"], "tram", showTrams, "bus", showBuses, true]}
             layout={{
               "symbol-placement": "line",
               "symbol-avoid-edges": false,

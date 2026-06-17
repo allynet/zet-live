@@ -53,7 +53,7 @@ export const v1MessageSchema = versionedSchema(
     .or(
       z.object({
         gbfsStations: z.array(
-          z.tuple([z.string(), z.string(), z.number(), z.number()]).rest(z.unknown()),
+          z.tuple([z.string(), z.string().nullable(), z.number(), z.number()]).rest(z.unknown()),
         ),
       }),
     ),
