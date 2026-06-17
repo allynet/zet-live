@@ -2,6 +2,7 @@ import { MapContainer } from "@/components/map-container";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { StopSheet } from "@/components/stop-sheet";
 import { VehicleSheet } from "@/components/vehicle-sheet";
+import { GbfsStationSheet } from "@/components/gbfs-station-sheet";
 import { StatusBar } from "@/components/status-bar";
 import { SearchBar } from "@/components/search-bar";
 import { LoadingScreen } from "@/components/loading-screen";
@@ -43,6 +44,14 @@ export function App() {
   const followEnabled = useStore((s) => s.followEnabled);
   const tripFetchError = useStore((s) => s.tripFetchError);
 
+  const gbfsStations = useStore((s) => s.gbfsStations);
+  const selectedGbfsStationId = useStore((s) => s.selectedGbfsStationId);
+
+  const selectedGbfsStation =
+    selectedGbfsStationId !== null
+      ? (gbfsStations.get(`gbfs-station-${selectedGbfsStationId}`) ?? null)
+      : null;
+
   const nextStopIndex = selectedVehicle
     ? findNextStopIndex(
         displayedStops,
@@ -51,7 +60,7 @@ export function App() {
       )
     : -1;
 
-  const isOpen = selectedVehicle !== null || selectedStop !== null;
+  const isOpen = selectedVehicle !== null || selectedStop !== null || selectedGbfsStation !== null;
 
   let sheetTitle: ReactNode = null;
   let minimizedBody: ReactNode | undefined;
@@ -122,6 +131,19 @@ export function App() {
         </span>
       );
     }
+  } else if (selectedGbfsStation) {
+    sheetTitle = (
+      <span className="text-on-surface truncate text-sm font-bold">
+        {selectedGbfsStation.getDisplayName()}
+      </span>
+    );
+    const bikes = selectedGbfsStation.numBikesAvailable ?? 0;
+    minimizedBody = (
+      <span className="text-on-surface-muted text-xs">
+        {bikes} {bikes === 1 ? "bike" : "bikes"} available
+        {selectedGbfsStation.isRenting ? "" : " · not renting"}
+      </span>
+    );
   }
 
   useEffect(() => {
@@ -186,6 +208,8 @@ export function App() {
               selectVehicle(vehicleId, tripId, true);
             }}
           />
+        ) : selectedGbfsStation ? (
+          <GbfsStationSheet station={selectedGbfsStation} />
         ) : null}
       </BottomSheet>
 

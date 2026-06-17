@@ -53,21 +53,6 @@ CREATE TABLE gbfs_station_status (
 ) strict;
 
 
-CREATE TABLE gbfs_free_bikes (
-  bike_id          TEXT PRIMARY KEY,
-  lat              REAL,
-  lon              REAL,
-  is_reserved      INTEGER,
-  is_disabled      INTEGER,
-  vehicle_type_id  TEXT,
-  station_id       TEXT,
-  pricing_plan_id  TEXT,
-  rental_uris      TEXT -- JSON
-) strict;
-CREATE INDEX idx_gbfs_free_bikes__station_id      ON gbfs_free_bikes(station_id);
-CREATE INDEX idx_gbfs_free_bikes__vehicle_type_id ON gbfs_free_bikes(vehicle_type_id);
-
-
 CREATE TABLE gbfs_regions (
   region_id TEXT PRIMARY KEY,
   name      TEXT

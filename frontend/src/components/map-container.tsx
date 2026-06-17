@@ -14,8 +14,8 @@ import mapStyle3dDark from "@/data/maps/style/3d.dark.json";
 import mapStyleFlat from "@/data/maps/style/flat.json";
 import mapStyleSatellite from "@/data/maps/style/satellite.json";
 import { useStore } from "@/store";
-import { type MapStyleId } from "@/settings";
-import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
+import { type MapStyleId, useSetting } from "@/settings";
+import { selectVehicle, selectStop, selectGbfsStation, clearSelection } from "@/state-actions";
 import { useGeolocationPermission } from "@/hooks/use-geolocation-permission";
 import { themeStore } from "@/hooks/use-theme";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -26,7 +26,13 @@ import {
   vehicleIconName,
   type VehicleIconDescriptor,
 } from "@/utils/vehicle-icons";
+import {
+  ensureStationIcons,
+  stationIconName,
+  type StationIconDescriptor,
+} from "@/utils/gbfs-icons";
 import type { VehicleV1 } from "@/app/entity/v1/vehicle";
+import type { GbfsStationV1 } from "@/app/entity/v1/gbfs-station";
 
 const styleMap = new Map<MapStyleId, StyleSpecification>([
   ["3d", mapStyle3d as StyleSpecification],
@@ -74,6 +80,7 @@ function buildVehiclesGeoJson(
       const isFollowing =
         followingVehicleId === mapId || (followingTripIds?.has(v.tripId) ?? false);
       const hasFollowing = followingVehicleId !== null || followingTripIds !== null;
+      const isBus = v.routeId.length > 2;
 
       return {
         type: "Feature" as const,
@@ -81,12 +88,9 @@ function buildVehiclesGeoJson(
         properties: {
           id: v.id,
           tripId: v.tripId,
-          themeColor: v.routeId.length > 2 ? "blue" : "red",
-          iconName: vehicleIconName(
-            v.routeId,
-            v.routeId.length > 2 ? "blue" : "red",
-            quantizeBearing(v.bearing),
-          ),
+          vehicleType: isBus ? "bus" : "tram",
+          themeColor: isBus ? "blue" : "red",
+          iconName: vehicleIconName(v.routeId, isBus ? "blue" : "red", quantizeBearing(v.bearing)),
           followingState: isFollowing ? 1 : hasFollowing ? 2 : 0,
           sortKey: isFollowing ? 2 : hasFollowing ? 0 : 1,
         },
@@ -129,6 +133,29 @@ function buildFollowingRouteFeatures(followingRoute: [number, number][] | null) 
     : emptyGeoJSON;
 }
 
+function buildGbfsStationsGeoJson(
+  stations: Map<string, GbfsStationV1>,
+  selectedGbfsStationId: string | null,
+) {
+  const all = Array.from(stations.values());
+  return {
+    type: "FeatureCollection" as const,
+    features: all.map((s) => {
+      const bikes = s.numBikesAvailable ?? 0;
+      const isSelected = selectedGbfsStationId === s.id;
+      return {
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [s.lng, s.lat] as [number, number] },
+        properties: {
+          id: s.id,
+          iconName: stationIconName(bikes, s.isRenting),
+          sortKey: isSelected ? 2 : bikes > 0 ? 1 : 0,
+        },
+      };
+    }),
+  };
+}
+
 function imperativeSetData(mapRef: { current: MapRef | null }, sourceId: string, data: unknown) {
   const map = mapRef.current?.getMap();
   const source = map?.getSource(sourceId);
@@ -137,9 +164,15 @@ function imperativeSetData(mapRef: { current: MapRef | null }, sourceId: string,
   }
 }
 
-function useRafSetData(mapRef: { current: MapRef | null }, sourceId: string, data: unknown) {
+function useRafSetData(
+  mapRef: { current: MapRef | null },
+  sourceId: string,
+  data: unknown,
+  ready = true,
+) {
   const rafId = useRef<number | null>(null);
   useEffect(() => {
+    if (!ready) return;
     if (rafId.current !== null) cancelAnimationFrame(rafId.current);
     const captured = data;
     rafId.current = requestAnimationFrame(() => {
@@ -150,7 +183,7 @@ function useRafSetData(mapRef: { current: MapRef | null }, sourceId: string, dat
     return () => {
       if (rafId.current !== null) cancelAnimationFrame(rafId.current);
     };
-  }, [sourceId, data, mapRef]);
+  }, [sourceId, data, mapRef, ready]);
 }
 
 export function MapContainer() {
@@ -170,6 +203,12 @@ export function MapContainer() {
   const searchMatchedStopIds = useStore((s) => s.searchMatchedStopIds);
   const searchActive = searchMatchedVehicleIds !== null || searchMatchedStopIds !== null;
 
+  const gbfsStations = useStore((s) => s.gbfsStations);
+  const selectedGbfsStationId = useStore((s) => s.selectedGbfsStationId);
+  const showGbfsStations = useSetting("showGbfsStations");
+  const showBuses = useSetting("showBuses");
+  const showTrams = useSetting("showTrams");
+
   const followEnabled = useStore((s) => s.followEnabled);
   const flyToTarget = useStore((s) => s.flyToTarget);
 
@@ -181,6 +220,13 @@ export function MapContainer() {
     if (vehicleFeature) {
       const props = vehicleFeature.properties as Record<string, unknown>;
       selectVehicle(String(props.id), String(props.tripId), true);
+      return;
+    }
+
+    const stationFeature = e.features?.find((x) => x.source === "gbfs-stations");
+    if (stationFeature) {
+      const props = stationFeature.properties as Record<string, unknown>;
+      selectGbfsStation(String(props.id), true);
       return;
     }
 
@@ -251,6 +297,13 @@ export function MapContainer() {
       map.getCanvas().style.cursor = "pointer";
     });
     map.on("mouseleave", "vehicle-markers", () => {
+      map.getCanvas().style.cursor = "";
+    });
+
+    map.on("mouseenter", "gbfs-station-markers", () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", "gbfs-station-markers", () => {
       map.getCanvas().style.cursor = "";
     });
   }, []);
@@ -362,6 +415,31 @@ export function MapContainer() {
   );
   useRafSetData(mapRef, "current-following-route", followingRouteFeatures);
 
+  const gbfsStationsFeatures = useMemo(
+    () => buildGbfsStationsGeoJson(gbfsStations, selectedGbfsStationId),
+    [gbfsStations, selectedGbfsStationId],
+  );
+  useRafSetData(mapRef, "gbfs-stations", gbfsStationsFeatures, iconsReady);
+
+  const stationIconsToEnsure = useMemo<StationIconDescriptor[]>(() => {
+    const unique = new Map<string, StationIconDescriptor>();
+    for (const s of gbfsStations.values()) {
+      const count = s.numBikesAvailable ?? 0;
+      const key = `${count}|${s.isRenting}`;
+      if (!unique.has(key)) {
+        unique.set(key, { count, isRenting: s.isRenting });
+      }
+    }
+    return [...unique.values()];
+  }, [gbfsStations]);
+
+  useEffect(() => {
+    if (!iconsReady) return;
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    ensureStationIcons(map, stationIconsToEnsure);
+  }, [iconsReady, stationIconsToEnsure]);
+
   const isFollowingSomething =
     followingVehicleId !== null || followingTripIds !== null || followingRoute !== null;
 
@@ -407,7 +485,7 @@ export function MapContainer() {
         hash
         // @ts-expect-error antialias exists in maplibre-gl but not in mapbox-gl types
         antialias
-        interactiveLayerIds={["route-stops-label", "vehicle-markers"]}
+        interactiveLayerIds={["route-stops-label", "vehicle-markers", "gbfs-station-markers"]}
         onClick={handleClick}
         onLoad={onLoad}
         onDragStart={onDragStart}
@@ -437,6 +515,25 @@ export function MapContainer() {
               type="symbol"
               layout={vehicleMarkerLayout}
               paint={vehicleMarkerPaint}
+              filter={["match", ["get", "vehicleType"], "tram", showTrams, "bus", showBuses, true]}
+            />
+          </Source>
+        )}
+
+        {iconsReady && (
+          <Source id="gbfs-stations" type="geojson" data={emptyGeoJSON}>
+            <Layer
+              id="gbfs-station-markers"
+              type="symbol"
+              beforeId="route-stop-dot"
+              layout={{
+                "icon-image": ["get", "iconName"],
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
+                "symbol-z-order": "source",
+                "symbol-sort-key": ["get", "sortKey"],
+                visibility: showGbfsStations ? "visible" : "none",
+              }}
             />
           </Source>
         )}

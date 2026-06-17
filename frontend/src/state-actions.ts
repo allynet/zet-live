@@ -9,6 +9,7 @@ export function selectVehicle(rawVehicleId: string, tripId: string, flyTo = fals
     followingTripIds: null,
     tripFetchError: null,
     stopFetchError: null,
+    selectedGbfsStationId: null,
   });
 
   const mapId = `vehicle-${rawVehicleId}`;
@@ -43,6 +44,7 @@ export function selectStop(stopIds: string[]) {
     followingStopIds: stopIds,
     tripFetchError: null,
     stopFetchError: null,
+    selectedGbfsStationId: null,
   });
 
   const simpleStops = state.simpleStops;
@@ -98,5 +100,30 @@ export function clearSelection() {
     stopArrivalTimes: null,
     tripFetchError: null,
     stopFetchError: null,
+    selectedGbfsStationId: null,
   });
+}
+
+export function selectGbfsStation(stationId: string, flyTo = false) {
+  useStore.setState({
+    followingVehicleId: null,
+    followEnabled: false,
+    followingTripId: null,
+    followingTripIds: null,
+    followingRoute: null,
+    followingStopIds: [],
+    selectedStop: null,
+    tripStopTimes: null,
+    stopArrivalTimes: null,
+    tripFetchError: null,
+    stopFetchError: null,
+    selectedGbfsStationId: stationId,
+  });
+
+  if (flyTo) {
+    const station = useStore.getState().gbfsStations.get(`gbfs-station-${stationId}`);
+    if (station) {
+      useStore.setState({ flyToTarget: { longitude: station.lng, latitude: station.lat } });
+    }
+  }
 }

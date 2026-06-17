@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, de::DeserializeOwned};
 
-pub mod free_bike_status;
 pub mod station_information;
 pub mod station_status;
 pub mod system_hours;

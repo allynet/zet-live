@@ -49,6 +49,13 @@ export const v1MessageSchema = versionedSchema(
       z.object({
         stopTrips: z.array(z.string()),
       }),
+    )
+    .or(
+      z.object({
+        gbfsStations: z.array(
+          z.tuple([z.string(), z.string(), z.number(), z.number()]).rest(z.unknown()),
+        ),
+      }),
     ),
 );
 

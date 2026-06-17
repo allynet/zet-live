@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { z } from "zod";
 import type { VehicleV1 } from "./app/entity/v1/vehicle";
 import type { StopV1 } from "./app/entity/v1/stop";
+import type { GbfsStationV1 } from "./app/entity/v1/gbfs-station";
 import type { GroupedStop } from "./app/entity/shared";
 import type { TripStopTimeEntry } from "./app/trip-stop-times";
 import { stopArrivalTimeSchema } from "./app/entity/v1/api";
@@ -33,6 +34,10 @@ export type StoreState = {
   stopsGrouped: GroupedStop[];
   activeStopIds: Set<string>;
   stopBounds: [[number, number], [number, number]];
+
+  gbfsStations: Map<string, GbfsStationV1>;
+  gbfsBounds: [[number, number], [number, number]];
+  selectedGbfsStationId: string | null;
 
   followingVehicleId: string | null;
   followEnabled: boolean;
@@ -84,6 +89,10 @@ export const useStore = create<StoreState>()(() => ({
   activeStopIds: new Set(),
   stopBounds: DEFAULT_BOUNDS,
 
+  gbfsStations: new Map(),
+  gbfsBounds: DEFAULT_BOUNDS,
+  selectedGbfsStationId: null,
+
   followingVehicleId: null,
   followEnabled: false,
   followingStopIds: [],
@@ -121,18 +130,18 @@ export const useStore = create<StoreState>()(() => ({
 }));
 
 export function updateMaxBounds() {
-  const { stopBounds, vehicleBounds } = useStore.getState();
+  const { stopBounds, vehicleBounds, gbfsBounds } = useStore.getState();
   const pad = 0.05;
 
   useStore.setState({
     maxBounds: [
       [
-        Math.min(stopBounds[0][0], vehicleBounds[0][0]) - pad,
-        Math.min(stopBounds[0][1], vehicleBounds[0][1]) - pad,
+        Math.min(stopBounds[0][0], vehicleBounds[0][0], gbfsBounds[0][0]) - pad,
+        Math.min(stopBounds[0][1], vehicleBounds[0][1], gbfsBounds[0][1]) - pad,
       ],
       [
-        Math.max(stopBounds[1][0], vehicleBounds[1][0]) + pad,
-        Math.max(stopBounds[1][1], vehicleBounds[1][1]) + pad,
+        Math.max(stopBounds[1][0], vehicleBounds[1][0], gbfsBounds[1][0]) + pad,
+        Math.max(stopBounds[1][1], vehicleBounds[1][1], gbfsBounds[1][1]) + pad,
       ],
     ],
   });

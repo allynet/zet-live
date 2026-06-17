@@ -8,6 +8,7 @@ import {
 } from "@/app/entity/v1/api";
 import { VehicleV1 } from "@/app/entity/v1/vehicle";
 import { StopV1 } from "@/app/entity/v1/stop";
+import { GbfsStationV1 } from "@/app/entity/v1/gbfs-station";
 import { API_URL } from "@/app/consts";
 import { useStore, type VehicleLocationPair, updateMaxBounds } from "@/store";
 import type { StopsUpdateResponse } from "@/app/entity/shared";
@@ -111,7 +112,51 @@ export function processMessage(message: V1Message) {
         void refreshStopArrivalTimes(followingStopIds);
       }
     }
+  } else if (typeof message.d === "object" && "gbfsStations" in message.d) {
+    handleGbfsStations(message.d.gbfsStations as (string | number)[][]);
   }
+}
+
+function recomputeGbfsBounds(
+  stations: Map<string, GbfsStationV1>,
+): [[number, number], [number, number]] {
+  let minLat = 89.5;
+  let maxLat = -89.5;
+  let minLng = 89.5;
+  let maxLng = -89.5;
+  let hasAny = false;
+
+  for (const s of stations.values()) {
+    hasAny = true;
+    minLat = Math.min(minLat, s.lat);
+    maxLat = Math.max(maxLat, s.lat);
+    minLng = Math.min(minLng, s.lng);
+    maxLng = Math.max(maxLng, s.lng);
+  }
+
+  if (!hasAny) {
+    return [
+      [89.5, 89.5],
+      [-89.5, -89.5],
+    ];
+  }
+
+  return [
+    [minLng, minLat],
+    [maxLng, maxLat],
+  ];
+}
+
+function handleGbfsStations(raw: (string | number)[][]) {
+  const newMap = new Map<string, GbfsStationV1>();
+  for (const row of raw) {
+    const station = GbfsStationV1.fromSimple(row);
+    newMap.set(station.getMapId(), station);
+  }
+
+  useStore.setState({ gbfsStations: newMap });
+  useStore.setState({ gbfsBounds: recomputeGbfsBounds(newMap) });
+  updateMaxBounds();
 }
 
 let followingRouteAbort: AbortController | null = null;

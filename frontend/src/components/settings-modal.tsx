@@ -43,6 +43,9 @@ export function SettingsModal() {
   const wakeLockEnabled = useSetting("wakeLockEnabled");
   const uiThemeMode = useSetting("uiThemeMode");
   const uiThemeManual = useSetting("uiThemeManual");
+  const showGbfsStations = useSetting("showGbfsStations");
+  const showBuses = useSetting("showBuses");
+  const showTrams = useSetting("showTrams");
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -246,6 +249,48 @@ export function SettingsModal() {
               />
 
               <SettingsCategory
+                title="Layers"
+                sections={[
+                  {
+                    title: "Buses",
+                    description: "Show live bus positions on the map.",
+                    body: (
+                      <LayerSwitch
+                        enabled={showBuses}
+                        onToggle={() => {
+                          updateSetting("showBuses", !showBuses);
+                        }}
+                      />
+                    ),
+                  },
+                  {
+                    title: "Trams",
+                    description: "Show live tram positions on the map.",
+                    body: (
+                      <LayerSwitch
+                        enabled={showTrams}
+                        onToggle={() => {
+                          updateSetting("showTrams", !showTrams);
+                        }}
+                      />
+                    ),
+                  },
+                  {
+                    title: "Bike Stations",
+                    description: "Show nextbike (Bajs) stations with live bike availability.",
+                    body: (
+                      <LayerSwitch
+                        enabled={showGbfsStations}
+                        onToggle={() => {
+                          updateSetting("showGbfsStations", !showGbfsStations);
+                        }}
+                      />
+                    ),
+                  },
+                ]}
+              />
+
+              <SettingsCategory
                 title="General"
                 sections={[
                   {
@@ -318,6 +363,33 @@ export function SettingsButton() {
         <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
         <circle cx="12" cy="12" r="3" />
       </svg>
+    </button>
+  );
+}
+
+function LayerSwitch(props: { enabled: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={props.enabled}
+      onClick={props.onToggle}
+      className={`flex w-full cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
+        props.enabled
+          ? "border-success bg-success-container text-on-success-container"
+          : "border-outline bg-surface text-on-surface-variant hover:bg-surface-hover"
+      }`}
+    >
+      <span>{props.enabled ? "Visible" : "Hidden"}</span>
+      <span
+        className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
+          props.enabled
+            ? "bg-success-container text-on-success-container"
+            : "bg-surface-dim text-on-surface-muted"
+        }`}
+      >
+        {props.enabled ? "On" : "Off"}
+      </span>
     </button>
   );
 }

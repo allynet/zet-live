@@ -27,12 +27,26 @@ use crate::{admin, cli::Config, http_client::HTTP_CLIENT, proto::gbfs::discovery
 static FORCE_SYNC: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
 static FORCE_GENERATION: AtomicU64 = AtomicU64::new(0);
 
+/// Shared change-notification signal fired after any GBFS feed writes new
+/// data. The v1 router awaits it (via [`wait_for_gbfs_update`]) to re-read the
+/// GBFS tables and broadcast a fresh snapshot over WebSocket. `Notify`
+/// coalesces bursts, so a startup flurry of feed writes results in few wakes;
+/// the DB is always re-read on wake so the snapshot is eventually consistent
+/// even if a notify lands while the listener is busy.
+static GBFS_NOTIFICATION: LazyLock<Arc<Notify>> = LazyLock::new(|| Arc::new(Notify::new()));
+
 const DEFAULT_TTL: jiff::SignedDuration = jiff::SignedDuration::from_mins(1);
 
 /// Force every GBFS feed fetcher to refresh out-of-cycle.
 pub fn force_sync() {
     FORCE_GENERATION.fetch_add(1, Ordering::Relaxed);
     FORCE_SYNC.notify_waiters();
+}
+
+/// Wait until any GBFS feed has written newer data. Returns immediately once
+/// per notify; callers then re-read what they need from the database.
+pub async fn wait_for_gbfs_update() {
+    GBFS_NOTIFICATION.notified().await;
 }
 
 /// Spawn one periodic fetcher per GBFS feed.
@@ -45,7 +59,6 @@ pub fn spawn_all_feed_fetchers() {
     spawn_feed_fetcher::<super::data::vehicle_types::Feed>();
     spawn_feed_fetcher::<super::data::station_information::Feed>();
     spawn_feed_fetcher::<super::data::station_status::Feed>();
-    spawn_feed_fetcher::<super::data::free_bike_status::Feed>();
     spawn_feed_fetcher::<super::data::system_hours::Feed>();
     spawn_feed_fetcher::<super::data::system_regions::Feed>();
     spawn_feed_fetcher::<super::data::system_pricing_plans::Feed>();
@@ -93,6 +106,8 @@ pub fn spawn_feed_fetcher<F: GbfsFeed>() {
                             current_ttl = observed_ttl.max(jiff::SignedDuration::from_secs(1));
                         }
                         debug!(feed = F::FEED_NAME, last_updated = ?result.last_updated, "Got newer GBFS feed");
+                        trace!("Notifying GBFS listeners");
+                        GBFS_NOTIFICATION.notify_waiters();
                     }
                     Ok(None) => {}
                     Err(e) => {
