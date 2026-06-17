@@ -2,17 +2,18 @@ import { MapContainer } from "@/components/map-container";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { StopSheet } from "@/components/stop-sheet";
 import { VehicleSheet } from "@/components/vehicle-sheet";
+import { GbfsStationSheet } from "@/components/gbfs-station-sheet";
 import { StatusBar } from "@/components/status-bar";
 import { SearchBar } from "@/components/search-bar";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Toaster } from "sonner";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useUrlSync } from "@/hooks/use-url-sync";
+import { useSelectionFetcher } from "@/hooks/use-selection-fetcher";
 import { useVersionCheck } from "@/hooks/use-version-check";
 import { useTheme } from "@/hooks/use-theme";
 import { useStore } from "@/store";
 import { findNextStopIndex } from "@/app/trip-stop-times";
-import { selectVehicle, selectStop, clearSelection } from "@/state-actions";
 import { useEffect, type ReactNode } from "react";
 import { SettingsButton, SettingsModal } from "./components/settings-modal";
 import { NoticeBar } from "./components/notice-bar";
@@ -27,21 +28,40 @@ import imgFaviconSvg from "@/assets/img/favicon/favicon.svg";
 export function App() {
   useWebSocket();
   useUrlSync();
+  useSelectionFetcher();
   useVersionCheck();
   useTheme();
 
   const wakeLockEnabled = useSetting("wakeLockEnabled");
   useWakeLock(wakeLockEnabled);
 
-  const selectedStop = useStore((s) => s.selectedStop);
-  const selectedVehicle = useStore((s) =>
-    s.followingVehicleId ? (s.vehicles.get(s.followingVehicleId) ?? null) : null,
-  );
+  const selection = useStore((s) => s.selection);
+  const vehicleSelection = useStore((s) => s.vehicleSelection);
+  const stopSelection = useStore((s) => s.stopSelection);
+  const vehicles = useStore((s) => s.vehicles);
   const displayedStops = useStore((s) => s.displayedStops);
-  const tripStopTimes = useStore((s) => s.tripStopTimes);
-  const stopArrivalTimes = useStore((s) => s.stopArrivalTimes);
-  const followEnabled = useStore((s) => s.followEnabled);
-  const tripFetchError = useStore((s) => s.tripFetchError);
+  const gbfsStations = useStore((s) => s.gbfsStations);
+
+  const selectVehicle = useStore((s) => s.selectVehicle);
+  const selectStop = useStore((s) => s.selectStop);
+  const clearSelection = useStore((s) => s.clearSelection);
+  const setFollowEnabled = useStore((s) => s.setFollowEnabled);
+
+  const selectedVehicle =
+    selection?.type === "vehicle" ? (vehicles.get(`vehicle-${selection.id}`) ?? null) : null;
+  const selectedGbfsStation =
+    selection?.type === "gbfs-station"
+      ? (gbfsStations.get(`gbfs-station-${selection.id}`) ?? null)
+      : null;
+  const selectedStop =
+    selection?.type === "stop" && stopSelection
+      ? { name: stopSelection.name, ids: selection.ids, routes: stopSelection.routes }
+      : null;
+
+  const tripStopTimes = vehicleSelection?.tripStopTimes ?? null;
+  const stopArrivalTimes = stopSelection?.arrivalTimes ?? null;
+  const tripFetchError = vehicleSelection?.fetchError ?? null;
+  const followEnabled = vehicleSelection?.followEnabled ?? false;
 
   const nextStopIndex = selectedVehicle
     ? findNextStopIndex(
@@ -51,7 +71,7 @@ export function App() {
       )
     : -1;
 
-  const isOpen = selectedVehicle !== null || selectedStop !== null;
+  const isOpen = selectedVehicle !== null || selectedStop !== null || selectedGbfsStation !== null;
 
   let sheetTitle: ReactNode = null;
   let minimizedBody: ReactNode | undefined;
@@ -122,6 +142,20 @@ export function App() {
         </span>
       );
     }
+  } else if (selectedGbfsStation) {
+    sheetTitle = (
+      <span className="text-on-surface truncate text-sm font-bold">
+        <span className="font-light">[Bajs]</span>&nbsp;
+        <span className="capitalize">{selectedGbfsStation.getDisplayName().toLowerCase()}</span>
+      </span>
+    );
+    const bikes = selectedGbfsStation.numBikesAvailable ?? 0;
+    minimizedBody = (
+      <span className="text-on-surface-muted text-xs">
+        {bikes} {bikes === 1 ? "bike" : "bikes"} available
+        {selectedGbfsStation.isRenting ? "" : " · not renting"}
+      </span>
+    );
   }
 
   useEffect(() => {
@@ -164,7 +198,7 @@ export function App() {
             tripFetchError={tripFetchError}
             followEnabled={followEnabled}
             onToggleFollow={() => {
-              useStore.setState({ followEnabled: !useStore.getState().followEnabled });
+              setFollowEnabled(!followEnabled);
             }}
             onLocate={() => {
               if (selectedVehicle) {
@@ -186,6 +220,8 @@ export function App() {
               selectVehicle(vehicleId, tripId, true);
             }}
           />
+        ) : selectedGbfsStation ? (
+          <GbfsStationSheet station={selectedGbfsStation} />
         ) : null}
       </BottomSheet>
 

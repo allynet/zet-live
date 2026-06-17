@@ -106,6 +106,36 @@ pub struct DataFetcherConfig {
         env = "ZI_SCHEDULE_FETCH_INTERVAL"
     )]
     pub schedule_fetch_interval: jiff::Span,
+
+    /// The GBFS auto-discovery endpoint (`gbfs.json`) to fetch bike-share data from.
+    ///
+    /// @see <https://gbfs.org/documentation/gbfs/v2.3>
+    #[clap(
+        long,
+        default_value = "https://gbfs.nextbike.net/maps/gbfs/v2/nextbike_hd/gbfs.json",
+        env = "GBFS_FETCH_ENDPOINT"
+    )]
+    pub gbfs_fetch_endpoint: url::Url,
+
+    /// The language code to use when resolving GBFS feed URLs from `gbfs.json`
+    /// (e.g. `en`, `hr`, `de`). Falls back to the first available language if
+    /// the requested one is not present.
+    #[clap(long, default_value = "en", env = "GBFS_LANGUAGE")]
+    pub gbfs_language: String,
+
+    /// The minimum interval between GBFS fetches for a single feed. Each feed
+    /// otherwise polls at half its advertised TTL (plus jitter); this acts as a
+    /// floor to avoid hammering feeds that advertise a very small TTL.
+    ///
+    /// Accepts a duration in human-friendly format or ISO 8601.
+    /// Eg. 2 seconds, 2 minutes, 1d, 3 months, PT2S, 4h, 5mins, 6s
+    #[clap(
+        long,
+        value_parser = parse_span,
+        default_value = "5 seconds",
+        env = "GBFS_MIN_FETCH_INTERVAL"
+    )]
+    pub gbfs_min_fetch_interval: jiff::Span,
 }
 
 #[derive(Debug, clap::Subcommand)]

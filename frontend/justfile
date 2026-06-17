@@ -11,13 +11,12 @@ dev:
     bun run dev
 
 [parallel]
-lint: type-check _lint
+check: type-check lint-check fmt-check
 
-[parallel]
-check: lint fmt-check
+fix: fmt lint
 
-_lint:
-    bun run lint
+lint:
+    bun run lint:fix
 
 lint-check:
     bun run lint

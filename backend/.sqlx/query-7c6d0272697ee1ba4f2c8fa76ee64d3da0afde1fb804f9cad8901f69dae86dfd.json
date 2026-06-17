@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM gbfs_stations",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "7c6d0272697ee1ba4f2c8fa76ee64d3da0afde1fb804f9cad8901f69dae86dfd"
+}

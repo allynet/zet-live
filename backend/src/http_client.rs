@@ -7,6 +7,7 @@ pub static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 
     reqwest::Client::builder()
         .tls_certs_only(certs)
+        .redirect(reqwest::redirect::Policy::limited(3))
         .build()
         .expect("Failed to build HTTP client")
 });

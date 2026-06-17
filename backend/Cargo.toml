@@ -42,6 +42,7 @@ zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 webpki-root-certs = "1.0.7"
 build-info = "0.0.44"
 serde_with = "3.21.0"
+async-trait = "0.1.89"
 
 [lints.clippy]
 nursery = { level = "warn", priority = -1 }

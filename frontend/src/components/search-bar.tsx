@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Fuse from "fuse.js";
 import { useStore, type GroupedStop } from "@/store";
-import { selectVehicle, selectStop } from "@/state-actions";
 import type { VehicleV1 } from "@/app/entity/v1/vehicle";
 
 type VehicleRouteGroup = {
@@ -180,7 +179,7 @@ export function SearchBar() {
 
   const handleSelectStation = useCallback((station: GroupedStop) => {
     useStore.setState({ flyToTarget: { longitude: station.lng, latitude: station.lat } });
-    selectStop(station.ids);
+    useStore.getState().selectStop(station.ids);
     setQuery("");
     inputRef.current?.blur();
   }, []);
@@ -188,7 +187,7 @@ export function SearchBar() {
   const handleSelectVehicle = useCallback((group: VehicleRouteGroup) => {
     const first = group.vehicles[0];
     if (first) {
-      selectVehicle(first.id, first.tripId, true);
+      useStore.getState().selectVehicle(first.id, first.tripId, true);
     }
     setQuery("");
     inputRef.current?.blur();

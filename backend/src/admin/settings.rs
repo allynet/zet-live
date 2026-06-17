@@ -7,8 +7,10 @@ use crate::database::Database;
 pub struct AdminSettings {
     pub realtime_url: Option<url::Url>,
     pub static_url: Option<url::Url>,
+    pub gbfs_url: Option<url::Url>,
     pub realtime_paused: Option<bool>,
     pub static_paused: Option<bool>,
+    pub gbfs_paused: Option<bool>,
     #[serde(default)]
     pub global_notices: Vec<GlobalNotice>,
 }

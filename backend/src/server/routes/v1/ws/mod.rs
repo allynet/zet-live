@@ -117,21 +117,8 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
                     }
                 };
 
-                match transmission.as_ref() {
-                    Transmission::BroadcastToAll(data) => {
-                        trace!(to = ?addr, "Broadcasting data");
-                        if sender
-                            .lock()
-                            .await
-                            .send(Message::Binary(Bytes::copy_from_slice(data)))
-                            .await
-                            .is_err()
-                        {
-                            trace!(to = ?addr, "Closing websocket due to send error");
-                            break;
-                        }
-                    }
-                    Transmission::Empty => {}
+                if !handle_transmission(&transmission, addr, &sender).await {
+                    break;
                 }
             }
             result = notification_rx.recv() => {
@@ -157,6 +144,27 @@ async fn websocket(stream: WebSocket, addr: IpAddr, state: Arc<V1AppState>) {
     cleanup_connection(addr).await;
 
     debug!(?addr, "Websocket closed");
+}
+
+/// Send a [`Transmission`] to a single client. Returns `false` if the
+/// connection should be closed due to a send error.
+async fn handle_transmission(
+    transmission: &Transmission,
+    addr: IpAddr,
+    sender: &Arc<Mutex<futures::stream::SplitSink<WebSocket, Message>>>,
+) -> bool {
+    match transmission {
+        Transmission::BroadcastToAll(data) => {
+            trace!(to = ?addr, "Broadcasting data");
+            sender
+                .lock()
+                .await
+                .send(Message::Binary(Bytes::clone(data)))
+                .await
+                .is_ok()
+        }
+        Transmission::Empty => true,
+    }
 }
 
 async fn cleanup_connection(addr: IpAddr) {
@@ -204,19 +212,33 @@ async fn send_initial_state(
 
     {
         let notices = INITIAL_STATE.read().await.notices.clone();
-        if notices.is_empty() {
-            return Ok(());
+        if !notices.is_empty() {
+            let res = sender
+                .lock()
+                .await
+                .send(Message::Binary(Bytes::from(notices)))
+                .await;
+
+            if let Err(e) = res {
+                error!(?e, "Error sending initial notices");
+                return Err(e);
+            }
         }
+    }
 
-        let res = sender
-            .lock()
-            .await
-            .send(Message::Binary(Bytes::from(notices)))
-            .await;
+    {
+        let gbfs_stations = INITIAL_STATE.read().await.gbfs_stations.clone();
+        if !gbfs_stations.is_empty() {
+            let res = sender
+                .lock()
+                .await
+                .send(Message::Binary(Bytes::from(gbfs_stations)))
+                .await;
 
-        if let Err(e) = res {
-            error!(?e, "Error sending initial notices");
-            return Err(e);
+            if let Err(e) = res {
+                error!(?e, "Error sending initial GBFS stations");
+                return Err(e);
+            }
         }
     }
 

@@ -1,11 +1,15 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, LazyLock, OnceLock},
+    hash::{Hash, Hasher},
+    sync::{
+        Arc, LazyLock, OnceLock,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Instant,
 };
 
-use _entity::vehicle::Vehicle;
-use axum::{Router, routing::get};
+use _entity::{gbfs::GbfsStation, vehicle::Vehicle};
+use axum::{Router, body::Bytes, routing::get};
 use sqlx::AssertSqlSafe;
 use tokio::sync::{RwLock, watch};
 use tracing::{error, trace, warn};
@@ -14,9 +18,12 @@ use crate::{
     admin::settings::GlobalNotice,
     database::Database,
     entity::util::{mixed_value::MixedValue, versioned::Versioned},
-    proto::gtfs_realtime::{
-        data::transit_realtime::FeedMessage,
-        fetcher::{get_cached_feed, wait_for_feed_update},
+    proto::{
+        gbfs::fetcher::wait_for_gbfs_update,
+        gtfs_realtime::{
+            data::transit_realtime::FeedMessage,
+            fetcher::{get_cached_feed, wait_for_feed_update},
+        },
     },
 };
 
@@ -24,6 +31,7 @@ mod _entity;
 pub mod admin_notifications;
 mod app;
 mod feed;
+mod gbfs;
 mod schedule;
 mod vehicles;
 pub mod ws;
@@ -31,6 +39,7 @@ pub mod ws;
 pub fn create_v1_router() -> Router {
     let app_state = Arc::new(V1AppState::new());
     tokio::task::spawn(feed_listener(app_state.clone()));
+    tokio::task::spawn(gbfs_listener(app_state.clone()));
 
     let _ = V1_APP_STATE.set(app_state.clone());
 
@@ -39,6 +48,7 @@ pub fn create_v1_router() -> Router {
         .route("/vehicles", get(vehicles::get_all))
         .route("/feed", get(feed::get_feed))
         .route("/ws", get(ws::websocket_handler))
+        .route("/gbfs/stations", get(gbfs::get_stations))
         .route("/schedule/routes", get(schedule::get_routes))
         .route("/schedule/routes/{id}", get(schedule::get_route))
         .route("/schedule/stops", get(schedule::get_stops))
@@ -64,12 +74,14 @@ pub struct InitialState {
     vehicles: Vec<u8>,
     active_stops: Vec<u8>,
     notices: Vec<u8>,
+    gbfs_stations: Vec<u8>,
 }
 pub static INITIAL_STATE: LazyLock<RwLock<InitialState>> = LazyLock::new(|| {
     RwLock::new(InitialState {
         vehicles: Vec::new(),
         active_stops: Vec::new(),
         notices: Vec::new(),
+        gbfs_stations: Vec::new(),
     })
 });
 
@@ -92,7 +104,7 @@ pub async fn broadcast_notices(notices: &[GlobalNotice]) {
     };
 
     if let Some(state) = V1_APP_STATE.get() {
-        state.send_transmission(Transmission::BroadcastToAll(bytes));
+        state.send_transmission(Transmission::BroadcastToAll(Bytes::from(bytes)));
     }
 }
 
@@ -107,8 +119,110 @@ async fn feed_listener(app_state: Arc<V1AppState>) {
     }
 }
 
+/// Listens for GBFS feed changes and rebroadcasts a station snapshot over
+/// WebSocket. The database is re-read on every wake so the snapshot is always
+/// eventually consistent, even if a notify lands while a broadcast is in
+/// flight.
+async fn gbfs_listener(app_state: Arc<V1AppState>) {
+    broadcast_gbfs_snapshot(&app_state).await;
+    loop {
+        wait_for_gbfs_update().await;
+        trace!("Got GBFS update on v1 router");
+        broadcast_gbfs_snapshot(&app_state).await;
+    }
+}
+
+/// Read the GBFS station tables, build compact tuples, persist them to
+/// [`INITIAL_STATE`], and broadcast to every connected WebSocket client.
+async fn broadcast_gbfs_snapshot(app_state: &Arc<V1AppState>) {
+    let stations = match fetch_gbfs_stations().await {
+        Ok(stations) => stations,
+        Err(e) => {
+            error!(?e, "Failed to fetch GBFS stations");
+            return;
+        }
+    };
+
+    trace!(stations = stations.len(), "Building GBFS snapshot");
+
+    let stations_simple = stations
+        .iter()
+        .map(GbfsStation::to_simple)
+        .collect::<Vec<_>>();
+
+    let stations_bytes =
+        match minicbor_serde::to_vec(Versioned::new(1, Broadcast::GbfsStations(stations_simple))) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                error!(?e, "Failed to serialize GBFS stations");
+                return;
+            }
+        };
+
+    let hash = {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        stations_bytes.hash(&mut hasher);
+        hasher.finish()
+    };
+    if hash == LAST_GBFS_HASH.swap(hash, Ordering::Relaxed) {
+        trace!("GBFS snapshot unchanged, skipping broadcast");
+        return;
+    }
+
+    INITIAL_STATE
+        .write()
+        .await
+        .gbfs_stations
+        .clone_from(&stations_bytes);
+
+    app_state.send_transmission(Transmission::BroadcastToAll(Bytes::from(stations_bytes)));
+}
+
+/// Fetch all GBFS stations joined with their realtime status, newest first.
+pub async fn fetch_gbfs_stations() -> Result<Vec<GbfsStation>, sqlx::Error> {
+    let rows = sqlx::query!(
+        "
+        SELECT
+              s.station_id AS \"station_id!\"
+            , s.name
+            , s.lat       AS \"lat!: f64\"
+            , s.lon       AS \"lon!: f64\"
+            , s.capacity
+            , st.num_bikes_available
+            , st.num_docks_available
+            , st.is_renting
+            , st.is_returning
+        FROM gbfs_stations s
+        LEFT JOIN gbfs_station_status st ON st.station_id = s.station_id
+        WHERE st.is_installed = 1 OR st.is_installed IS NULL
+        "
+    )
+    .fetch_all(&Database::pool())
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| GbfsStation {
+            station_id: r.station_id,
+            name: r.name,
+            lat: r.lat,
+            lon: r.lon,
+            num_bikes_available: r.num_bikes_available,
+            num_docks_available: r.num_docks_available,
+            is_renting: r.is_renting.is_some_and(|v| v != 0),
+            is_returning: r.is_returning.is_some_and(|v| v != 0),
+            capacity: r.capacity,
+        })
+        .collect())
+}
+
 pub static SIMPLE_STOPS: LazyLock<RwLock<Vec<Vec<MixedValue>>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));
+
+/// Hash of the last GBFS snapshot that was actually broadcast. Used to skip
+/// re-broadcasting byte-identical snapshots when an unrelated GBFS feed
+/// (e.g. `system_hours`) writes and fires the change notification.
+static LAST_GBFS_HASH: AtomicU64 = AtomicU64::new(0);
 
 #[allow(clippy::too_many_lines)]
 fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
@@ -264,7 +378,8 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             .active_stops
             .clone_from(&active_stops);
 
-        active_stops_app_state.send_transmission(Transmission::BroadcastToAll(active_stops));
+        active_stops_app_state
+            .send_transmission(Transmission::BroadcastToAll(Bytes::from(active_stops)));
     });
 
     let vehicles_feed = feed;
@@ -768,7 +883,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
 
         INITIAL_STATE.write().await.vehicles.clone_from(&vehicles);
 
-        vehicles_app_state.send_transmission(Transmission::BroadcastToAll(vehicles));
+        vehicles_app_state.send_transmission(Transmission::BroadcastToAll(Bytes::from(vehicles)));
     });
 }
 
@@ -808,6 +923,7 @@ pub enum Broadcast {
     ActiveStops(Vec<String>),
     Notices(Vec<GlobalNotice>),
     Toast(ToastData),
+    GbfsStations(Vec<Vec<MixedValue>>),
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -822,7 +938,7 @@ pub struct ToastData {
 
 pub enum Transmission {
     Empty,
-    BroadcastToAll(Vec<u8>),
+    BroadcastToAll(Bytes),
 }
 
 fn haversine_distance(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {

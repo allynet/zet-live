@@ -8,11 +8,38 @@ import {
 } from "@/app/entity/v1/api";
 import { VehicleV1 } from "@/app/entity/v1/vehicle";
 import { StopV1 } from "@/app/entity/v1/stop";
+import { GbfsStationV1 } from "@/app/entity/v1/gbfs-station";
 import { API_URL } from "@/app/consts";
-import { useStore, type VehicleLocationPair, updateMaxBounds } from "@/store";
+import {
+  useStore,
+  type VehicleLocationPair,
+  type VehicleSelection,
+  type StopSelection,
+  updateMaxBounds,
+} from "@/store";
 import type { StopsUpdateResponse } from "@/app/entity/shared";
 import { buildRouteDisplayedStops, patchTripStopTimesFromVehicle } from "@/app/trip-stop-times";
 import { toast } from "sonner";
+
+function vehicleMapKey(id: string) {
+  return `vehicle-${id}`;
+}
+
+function patchVehicleSelection(patch: Partial<VehicleSelection>) {
+  const vs = useStore.getState().vehicleSelection;
+  if (!vs) return;
+  useStore.setState({ vehicleSelection: { ...vs, ...patch } });
+}
+
+function patchStopSelection(patch: Partial<StopSelection>) {
+  const ss = useStore.getState().stopSelection;
+  if (!ss) return;
+  useStore.setState({ stopSelection: { ...ss, ...patch } });
+}
+
+function sameStopIds(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}
 
 export function handleStopsUpdate(response: StopsUpdateResponse) {
   if (response.stops) {
@@ -23,17 +50,13 @@ export function handleStopsUpdate(response: StopsUpdateResponse) {
       ...(response.bounds ? { stopBounds: response.bounds } : {}),
     });
     updateMaxBounds();
-
-    console.log("Updating stops");
   }
 
   const state = useStore.getState();
+  const useGrouped = state.selection === null || state.selection.type === "gbfs-station";
   useStore.setState({
     stopsGrouped: response.grouped,
-    displayedStops:
-      !state.followingVehicleId && state.followingStopIds.length === 0
-        ? response.grouped
-        : state.displayedStops,
+    displayedStops: useGrouped ? response.grouped : state.displayedStops,
   });
 }
 
@@ -58,10 +81,12 @@ export function processMessage(message: V1Message) {
       const existing = currentMap.get(key);
       if (existing) {
         if (existing.prevLat !== null && existing.prevLng !== null) {
+          const isBus = vehicle.routeId.length > 2;
           locationPairs.push({
             from: [existing.prevLng, existing.prevLat],
             to: [vehicle.lng, vehicle.lat],
-            color: Number(vehicle.routeId) >= 100 ? "#00f" : "#f00",
+            color: isBus ? "#00f" : "#f00",
+            vehicleType: isBus ? "bus" : "tram",
           });
         }
       }
@@ -75,16 +100,20 @@ export function processMessage(message: V1Message) {
     }
 
     const state = useStore.getState();
-    let tripStopTimes = state.tripStopTimes;
+    const selection = state.selection;
+    let vehicleSelection = state.vehicleSelection;
 
-    if (state.followingTripId && state.followingVehicleId) {
-      const vehicle = newMap.get(state.followingVehicleId);
-      if (vehicle && vehicle.tripId === state.followingTripId) {
-        tripStopTimes = patchTripStopTimesFromVehicle(
-          tripStopTimes,
+    if (selection?.type === "vehicle" && vehicleSelection) {
+      const vehicle = newMap.get(vehicleMapKey(selection.id));
+      if (vehicle && vehicle.tripId === selection.tripId) {
+        const patched = patchTripStopTimesFromVehicle(
+          vehicleSelection.tripStopTimes,
           vehicle.nextStopSequence,
           vehicle.nextStopArrivalTime,
         );
+        if (patched !== vehicleSelection.tripStopTimes) {
+          vehicleSelection = { ...vehicleSelection, tripStopTimes: patched };
+        }
       }
     }
 
@@ -95,7 +124,7 @@ export function processMessage(message: V1Message) {
         [maxLng, maxLat],
       ],
       deltaMoveLines: locationPairs,
-      ...(tripStopTimes !== state.tripStopTimes ? { tripStopTimes } : {}),
+      ...(vehicleSelection !== state.vehicleSelection ? { vehicleSelection } : {}),
     });
     updateMaxBounds();
 
@@ -103,15 +132,60 @@ export function processMessage(message: V1Message) {
     if (now - lastStopTimesRefresh >= STOP_TIMES_REFRESH_INTERVAL) {
       lastStopTimesRefresh = now;
 
-      const { followingTripId, followingStopIds } = useStore.getState();
-
-      if (followingTripId) {
-        void refreshTripStopTimes(followingTripId);
-      } else if (followingStopIds.length > 0) {
-        void refreshStopArrivalTimes(followingStopIds);
+      const sel = useStore.getState().selection;
+      if (sel?.type === "vehicle" && sel.tripId) {
+        void refreshTripStopTimes(sel.tripId);
+      } else if (sel?.type === "stop") {
+        void refreshStopArrivalTimes(sel.ids);
       }
     }
+  } else if (typeof message.d === "object" && "gbfsStations" in message.d) {
+    handleGbfsStations(message.d.gbfsStations as (string | number)[][]);
   }
+}
+
+function recomputeGbfsBounds(
+  stations: Map<string, GbfsStationV1>,
+): [[number, number], [number, number]] {
+  let minLat = 89.5;
+  let maxLat = -89.5;
+  let minLng = 89.5;
+  let maxLng = -89.5;
+  let hasAny = false;
+
+  for (const s of stations.values()) {
+    hasAny = true;
+    minLat = Math.min(minLat, s.lat);
+    maxLat = Math.max(maxLat, s.lat);
+    minLng = Math.min(minLng, s.lng);
+    maxLng = Math.max(maxLng, s.lng);
+  }
+
+  if (!hasAny) {
+    return [
+      [89.5, 89.5],
+      [-89.5, -89.5],
+    ];
+  }
+
+  return [
+    [minLng, minLat],
+    [maxLng, maxLat],
+  ];
+}
+
+function handleGbfsStations(raw: (string | number)[][]) {
+  const newMap = new Map<string, GbfsStationV1>();
+  for (const row of raw) {
+    const station = GbfsStationV1.fromSimple(row);
+    newMap.set(station.getMapId(), station);
+  }
+
+  useStore.setState({
+    gbfsStations: newMap,
+    gbfsBounds: recomputeGbfsBounds(newMap),
+  });
+  updateMaxBounds();
 }
 
 let followingRouteAbort: AbortController | null = null;
@@ -123,13 +197,18 @@ export async function fetchFollowingRoute(tripId: string) {
   followingRouteAbort = new AbortController();
   const { signal } = followingRouteAbort;
 
+  const isStale = () => {
+    const sel = useStore.getState().selection;
+    return sel?.type !== "vehicle" || sel.tripId !== tripId;
+  };
+
   const result = await apiFetch(
     `${API_URL}/v1/schedule/trip-info/${tripId}`,
     tripInfoResponseSchema,
     { signal },
   );
 
-  if (signal.aborted) return;
+  if (signal.aborted || isStale()) return;
 
   if (result.error) {
     const { error } = result.error;
@@ -140,7 +219,10 @@ export async function fetchFollowingRoute(tripId: string) {
     }
 
     const state = useStore.getState();
-    const vehicle = state.followingVehicleId ? state.vehicles.get(state.followingVehicleId) : null;
+    const vehicle =
+      state.selection?.type === "vehicle"
+        ? state.vehicles.get(vehicleMapKey(state.selection.id))
+        : null;
 
     let fallbackStops: { name: string; lat: number; lng: number; ids: string[] }[] = [];
 
@@ -151,13 +233,11 @@ export async function fetchFollowingRoute(tripId: string) {
       }
     }
 
-    useStore.setState({
-      followingRoute: null,
-      displayedStops: fallbackStops,
+    useStore.setState({ displayedStops: fallbackStops });
+    patchVehicleSelection({
+      route: null,
       tripStopTimes: null,
-      tripFetchError: isNotFound
-        ? "Could not find full stop list.\nThis is a temporary issue."
-        : error,
+      fetchError: isNotFound ? "Could not find full stop list.\nThis is a temporary issue." : error,
     });
     return;
   }
@@ -167,10 +247,12 @@ export async function fetchFollowingRoute(tripId: string) {
   const tripStopTimes = shape.d.stopTimes;
 
   useStore.setState({
-    followingRoute: shape.d.route,
     displayedStops: buildRouteDisplayedStops(tripStopTimes, simpleStops),
+  });
+  patchVehicleSelection({
+    route: shape.d.route,
     tripStopTimes,
-    tripFetchError: null,
+    fetchError: null,
   });
 }
 
@@ -185,13 +267,18 @@ async function refreshTripStopTimes(tripId: string) {
   followingRouteRefreshAbort = new AbortController();
   const { signal } = followingRouteRefreshAbort;
 
+  const isStale = () => {
+    const sel = useStore.getState().selection;
+    return sel?.type !== "vehicle" || sel.tripId !== tripId;
+  };
+
   const result = await apiFetch(
     `${API_URL}/v1/schedule/trip-info/${tripId}`,
     tripStopTimesResponseSchema,
     { signal },
   );
 
-  if (signal.aborted) return;
+  if (signal.aborted || isStale()) return;
 
   if (result.error) {
     if (result.error.status !== 404) {
@@ -200,13 +287,18 @@ async function refreshTripStopTimes(tripId: string) {
     return;
   }
 
-  useStore.setState({ tripStopTimes: result.data.d.stopTimes });
+  patchVehicleSelection({ tripStopTimes: result.data.d.stopTimes });
 }
 
 async function refreshStopArrivalTimes(stopIds: string[]) {
   stopTripsRefreshAbort?.abort();
   stopTripsRefreshAbort = new AbortController();
   const { signal } = stopTripsRefreshAbort;
+
+  const isStale = () => {
+    const sel = useStore.getState().selection;
+    return sel?.type !== "stop" || !sameStopIds(sel.ids, stopIds);
+  };
 
   const queryParams = new URLSearchParams();
   for (const stopId of stopIds) {
@@ -219,18 +311,18 @@ async function refreshStopArrivalTimes(stopIds: string[]) {
     { signal },
   );
 
-  if (signal.aborted) return;
+  if (signal.aborted || isStale()) return;
 
   if (result.error) {
     if (result.error.status === 404) {
-      useStore.setState({ stopFetchError: result.error.error });
+      patchStopSelection({ fetchError: result.error.error });
     } else {
       toast.error("Failed to refresh arrivals", { description: result.error.error });
     }
     return;
   }
 
-  useStore.setState({ stopArrivalTimes: result.data.d.arrivalTimes, stopFetchError: null });
+  patchStopSelection({ arrivalTimes: result.data.d.arrivalTimes, fetchError: null });
 }
 
 export async function fetchStopTrips(stopIds: string[]) {
@@ -238,6 +330,11 @@ export async function fetchStopTrips(stopIds: string[]) {
   stopTripsRefreshAbort?.abort();
   stopTripsAbort = new AbortController();
   const { signal } = stopTripsAbort;
+
+  const isStale = () => {
+    const sel = useStore.getState().selection;
+    return sel?.type !== "stop" || !sameStopIds(sel.ids, stopIds);
+  };
 
   const queryParams = new URLSearchParams();
   for (const stopId of stopIds) {
@@ -250,21 +347,36 @@ export async function fetchStopTrips(stopIds: string[]) {
     { signal },
   );
 
-  if (signal.aborted) return null;
+  if (signal.aborted || isStale()) return;
 
   if (result.error) {
     if (result.error.status === 404) {
-      useStore.setState({ stopFetchError: result.error.error });
+      patchStopSelection({ fetchError: result.error.error });
     } else {
       toast.error("Failed to load stop trips", { description: result.error.error });
     }
-    return null;
+    return;
   }
 
-  useStore.setState({
-    stopArrivalTimes: result.data.d.arrivalTimes,
-    stopFetchError: null,
+  const tripIds = result.data.d.stopTrips;
+  const vehicles = useStore.getState().vehicles;
+  const routes = new Set<string>();
+  for (const v of vehicles.values()) {
+    if (tripIds.includes(v.tripId)) {
+      routes.add(v.routeId);
+    }
+  }
+  const sortedRoutes = Array.from(routes).sort((a, b) => {
+    const na = parseInt(a, 10);
+    const nb = parseInt(b, 10);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return a.localeCompare(b);
   });
 
-  return result.data.d.stopTrips;
+  patchStopSelection({
+    tripIds: new Set(tripIds),
+    routes: sortedRoutes,
+    arrivalTimes: result.data.d.arrivalTimes,
+    fetchError: null,
+  });
 }

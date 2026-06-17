@@ -11,6 +11,9 @@ const DEFAULTS = {
   wakeLockEnabled: true,
   uiThemeMode: "manual" as UiThemeMode,
   uiThemeManual: "light" as UiTheme,
+  showGbfsStations: true,
+  showBuses: true,
+  showTrams: true,
 };
 
 export type Settings = typeof DEFAULTS & {
@@ -39,6 +42,12 @@ function loadSettings(): Settings {
         uiThemeManual: isValidUiTheme(parsed.uiThemeManual)
           ? parsed.uiThemeManual
           : DEFAULTS.uiThemeManual,
+        showGbfsStations:
+          typeof parsed.showGbfsStations === "boolean"
+            ? parsed.showGbfsStations
+            : DEFAULTS.showGbfsStations,
+        showBuses: typeof parsed.showBuses === "boolean" ? parsed.showBuses : DEFAULTS.showBuses,
+        showTrams: typeof parsed.showTrams === "boolean" ? parsed.showTrams : DEFAULTS.showTrams,
         _settingsOpen: false,
       };
     }
