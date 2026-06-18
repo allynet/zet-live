@@ -334,6 +334,122 @@
       padding: 0.25rem 0.5rem;
       font-size: 0.7rem;
     }
+
+    .feedback-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .feedback-item {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      padding: 0.75rem;
+    }
+
+    .feedback-item.archived {
+      opacity: 0.55;
+    }
+
+    .feedback-item-head {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .feedback-category {
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+
+    .feedback-category.bug {
+      background: #7f1d1d;
+      color: #fca5a5;
+    }
+
+    .feedback-category.feature {
+      background: #065f46;
+      color: #6ee7b7;
+    }
+
+    .feedback-category.other {
+      background: #374151;
+      color: #d1d5db;
+    }
+
+    .feedback-date {
+      font-size: 0.7rem;
+      color: #64748b;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+
+    .feedback-ip {
+      font-size: 0.7rem;
+      color: #475569;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+
+    .feedback-message {
+      font-size: 0.875rem;
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin-bottom: 0.5rem;
+    }
+
+    .feedback-meta {
+      font-size: 0.7rem;
+      color: #64748b;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .feedback-meta strong {
+      color: #94a3b8;
+      font-weight: 500;
+    }
+
+    .feedback-contact {
+      font-size: 0.75rem;
+      color: #cbd5e1;
+      margin-bottom: 0.5rem;
+    }
+
+    .feedback-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .filter-bar {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 0.5rem;
+      align-items: center;
+    }
+
+    .filter-bar button {
+      padding: 0.2rem 0.5rem;
+      font-size: 0.7rem;
+      background: #334155;
+    }
+
+    .filter-bar button.active {
+      background: #3b82f6;
+    }
+
+    .filter-bar .spacer {
+      flex: 1;
+    }
   </style>
 </head>
 
@@ -423,6 +539,21 @@
       <div class="actions">
         <button onclick="forceSync('static')">Sync Now</button>
       </div>
+    </div>
+  </div>
+
+  <h2>Feedback</h2>
+  <div class="card" id="feedback">
+    <div class="filter-bar">
+      <button id="feedback-filter-all" class="active" onclick="setFeedbackFilter('all')">All</button>
+      <button id="feedback-filter-new" onclick="setFeedbackFilter('new')">New</button>
+      <button id="feedback-filter-archived" onclick="setFeedbackFilter('archived')">Archived</button>
+      <span class="spacer"></span>
+      <button class="secondary" onclick="loadFeedback()">Refresh</button>
+      <button class="danger" onclick="clearAllFeedback()">Clear All</button>
+    </div>
+    <div id="feedback-list" class="feedback-list">
+      <p class="empty">Loading...</p>
     </div>
   </div>
 
@@ -648,8 +779,88 @@
       await Promise.all([loadConnections(), loadMetadata()]);
     }
 
+    let feedbackFilter = 'all';
+
+    function setFeedbackFilter(filter) {
+      feedbackFilter = filter;
+      ['all', 'new', 'archived'].forEach(f => {
+        const btn = document.getElementById('feedback-filter-' + f);
+        if (btn) btn.classList.toggle('active', f === filter);
+      });
+      loadFeedback();
+    }
+
+    async function loadFeedback() {
+      const el = document.getElementById('feedback-list');
+      try {
+        const res = await api('/feedback?handled=' + encodeURIComponent(feedbackFilter));
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) {
+          el.innerHTML = '<p class="empty">No feedback yet</p>';
+          return;
+        }
+        el.innerHTML = data.map(renderFeedbackItem).join('');
+      } catch (e) {
+        el.innerHTML = '<p class="empty">Failed to load feedback</p>';
+      }
+    }
+
+    function renderFeedbackItem(f) {
+      const date = new Date(f.createdAt).toLocaleString();
+      const metaParts = [];
+      if (f.metaUrl) metaParts.push('<strong>URL:</strong> ' + escapeHtml(f.metaUrl));
+      if (f.metaLang) metaParts.push('<strong>Lang:</strong> ' + escapeHtml(f.metaLang));
+      if (f.metaBuild) metaParts.push('<strong>Build:</strong> ' + escapeHtml(f.metaBuild));
+      if (f.metaUa) metaParts.push('<strong>UA:</strong> ' + escapeHtml(f.metaUa));
+      const meta = metaParts.length
+        ? '<div class="feedback-meta">' + metaParts.join('') + '</div>'
+        : '';
+      const contact = (f.name || f.contact)
+        ? '<div class="feedback-contact">' +
+          (f.name ? '<strong>Name:</strong> ' + escapeHtml(f.name) : '') +
+          (f.name && f.contact ? ' · ' : '') +
+          (f.contact ? '<strong>Contact:</strong> ' + escapeHtml(f.contact) : '') +
+          '</div>'
+        : '';
+      const archiveLabel = f.handled ? 'Unarchive' : 'Archive';
+      const archiveAction = f.handled ? 'false' : 'true';
+      return '' +
+        '<div class="feedback-item' + (f.handled ? ' archived' : '') + '" data-id="' + f.id + '">' +
+          '<div class="feedback-item-head">' +
+            '<span class="feedback-category ' + f.category + '">' + f.category + '</span>' +
+            '<span class="feedback-date">' + date + '</span>' +
+            '<span class="feedback-ip">#' + f.id + ' · ' + escapeHtml(f.ip) + '</span>' +
+          '</div>' +
+          '<div class="feedback-message">' + escapeHtml(f.message) + '</div>' +
+          contact +
+          meta +
+          '<div class="feedback-actions">' +
+            '<button class="secondary btn-sm" onclick="archiveFeedback(' + f.id + ', ' + archiveAction + ')">' + archiveLabel + '</button>' +
+            '<button class="danger btn-sm" onclick="deleteFeedback(' + f.id + ')">Delete</button>' +
+          '</div>' +
+        '</div>';
+    }
+
+    async function archiveFeedback(id, handled) {
+      await api('/feedback/' + id + '/handled', { method: 'PUT', body: JSON.stringify({ handled }) });
+      await loadFeedback();
+    }
+
+    async function deleteFeedback(id) {
+      if (!confirm('Delete this feedback entry?')) return;
+      await api('/feedback/' + id, { method: 'DELETE' });
+      await loadFeedback();
+    }
+
+    async function clearAllFeedback() {
+      if (!confirm('Delete ALL feedback entries? This cannot be undone.')) return;
+      await api('/feedback', { method: 'DELETE' });
+      await loadFeedback();
+    }
+
     loadSettings();
     refresh();
+    loadFeedback();
     setInterval(refresh, 5000);
   </script>
 </body>

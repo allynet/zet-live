@@ -16,6 +16,7 @@ import { useStore } from "@/store";
 import { findNextStopIndex } from "@/app/trip-stop-times";
 import { useEffect, type ReactNode } from "react";
 import { SettingsButton, SettingsModal } from "./components/settings-modal";
+import { FeedbackButton, FeedbackModal } from "./components/feedback-modal";
 import { NoticeBar } from "./components/notice-bar";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { useSetting } from "./settings";
@@ -228,6 +229,7 @@ export function App() {
       <div className="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2 *:pointer-events-auto">
         <div className="flex flex-col gap-2">
           <SettingsButton />
+          <FeedbackButton />
           <div className="h-4">
             <div className="absolute ml-1.5">
               <StatusBar />
@@ -246,6 +248,7 @@ export function App() {
 
       <Toaster position="top-center" />
       <SettingsModal />
+      <FeedbackModal />
     </>
   );
 }

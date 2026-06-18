@@ -5,13 +5,14 @@ use axum::{
     extract::Path,
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post, put},
 };
+use axum_extra::extract::Query;
 use serde::Deserialize;
 use tracing::{debug, warn};
 
 use crate::{
-    admin,
+    admin::{self, feedback::FeedbackFilter},
     server::routes::v1::{
         admin_notifications::{ToastPayload, send_notification},
         ws::WS_CONNECTIONS,
@@ -33,6 +34,9 @@ pub fn create_admin_router(state: AdminState) -> Router {
         .route("/sync/gbfs", post(force_sync_gbfs))
         .route("/metadata", get(get_metadata))
         .route("/notify", post(send_notify))
+        .route("/feedback", get(list_feedback).delete(delete_all_feedback))
+        .route("/feedback/{id}", delete(delete_feedback))
+        .route("/feedback/{id}/handled", put(mark_feedback_handled))
         .layer(axum::middleware::from_fn_with_state(
             state.admin_key.clone(),
             auth_middleware,
@@ -138,4 +142,57 @@ async fn send_notify(axum::Json(payload): axum::Json<ToastPayload>) -> impl Into
     debug!(?payload, "Sending admin notification");
     send_notification(payload).await;
     StatusCode::ACCEPTED.into_response()
+}
+
+async fn list_feedback(Query(filter): Query<FeedbackFilter>) -> impl IntoResponse {
+    match admin::feedback::list(&filter).await {
+        Ok(rows) => axum::Json(rows).into_response(),
+        Err(e) => {
+            warn!(error = %e, "Failed to list feedback");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+async fn delete_feedback(Path(id): Path<i64>) -> impl IntoResponse {
+    match admin::feedback::delete(id).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            warn!(error = %e, id, "Failed to delete feedback");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+async fn delete_all_feedback() -> impl IntoResponse {
+    match sqlx::query!("DELETE FROM feedback")
+        .execute(&crate::database::Database::pool())
+        .await
+    {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            warn!(error = %e, "Failed to delete all feedback");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct MarkHandledRequest {
+    handled: bool,
+}
+
+async fn mark_feedback_handled(
+    Path(id): Path<i64>,
+    axum::Json(body): axum::Json<MarkHandledRequest>,
+) -> impl IntoResponse {
+    match admin::feedback::set_handled(id, body.handled).await {
+        Ok(Some(row)) => (StatusCode::OK, axum::Json(row)).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            warn!(error = %e, id, "Failed to update feedback handled flag");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
 }
