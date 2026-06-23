@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM feedback",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "40ec88cddff6a1ef0d188efb58adf3b7e1d41a9df7eaaa464c06171679aff737"
+}

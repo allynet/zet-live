@@ -186,6 +186,7 @@ async fn check_rate_limit(ip: IpAddr) -> Result<(), ApiError> {
     }
 }
 
+#[allow(clippy::significant_drop_tightening)]
 async fn try_acquire_rate_slot(ip: IpAddr, now: Instant) -> bool {
     let mut map = RATE_LIMITER.lock().await;
     let bucket = map.entry(ip).or_default();
