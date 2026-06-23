@@ -9,7 +9,11 @@ use std::{
 };
 
 use _entity::{gbfs::GbfsStation, vehicle::Vehicle};
-use axum::{Router, body::Bytes, routing::get};
+use axum::{
+    Router,
+    body::Bytes,
+    routing::{get, post},
+};
 use sqlx::AssertSqlSafe;
 use tokio::sync::{RwLock, watch};
 use tracing::{error, trace, warn};
@@ -31,6 +35,7 @@ mod _entity;
 pub mod admin_notifications;
 mod app;
 mod feed;
+mod feedback;
 mod gbfs;
 mod schedule;
 mod vehicles;
@@ -67,6 +72,7 @@ pub fn create_v1_router() -> Router {
             "/schedule/trip-info/{trip_id}",
             get(schedule::get_trip_info),
         )
+        .route("/feedback", post(feedback::submit))
         .with_state(app_state)
 }
 

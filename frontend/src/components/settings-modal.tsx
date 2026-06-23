@@ -9,6 +9,7 @@ import {
   type UiThemeMode,
   type UiTheme,
 } from "@/settings";
+import { openFeedback } from "@/feedback-store";
 import type { ReactNode } from "react";
 import { cn } from "@/utils/style";
 
@@ -262,6 +263,36 @@ export function SettingsModal() {
                           updateSetting("wakeLockEnabled", !wakeLockEnabled);
                         }}
                       />
+                    ),
+                  },
+                  {
+                    title: "Send Feedback",
+                    description: "Report a bug, request a feature, or share a thought.",
+                    body: (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          settingsStore.setState({ _settingsOpen: false });
+                          openFeedback();
+                        }}
+                        className="border-outline bg-surface text-on-surface-variant hover:bg-surface-hover flex w-full cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors"
+                      >
+                        <span>Open feedback form</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M5 12h14" />
+                          <path d="m12 5 7 7-7 7" />
+                        </svg>
+                      </button>
                     ),
                   },
                 ]}
