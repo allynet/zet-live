@@ -4,10 +4,18 @@ set positional-arguments
 default:
     @just --list
 
-build:
+install:
+    bun install
+
+@_check-install:
+    if [ ! -d node_modules ]; then \
+      just install; \
+    fi \
+
+build: _check-install
     bun run build
 
-dev:
+dev: _check-install
     bun run dev
 
 [parallel]
