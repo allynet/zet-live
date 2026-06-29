@@ -53,7 +53,7 @@ export function handleStopsUpdate(response: StopsUpdateResponse) {
   }
 
   const state = useStore.getState();
-  const useGrouped = state.selection === null || state.selection.type === "gbfs-station";
+  const useGrouped = state.selection === null;
   useStore.setState({
     stopsGrouped: response.grouped,
     displayedStops: useGrouped ? response.grouped : state.displayedStops,

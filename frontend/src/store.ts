@@ -192,12 +192,11 @@ export const useStore = create<StoreState>()(
     },
 
     selectGbfsStation: (id, flyTo = false) => {
-      const { stopsGrouped } = get();
       set({
         selection: { type: "gbfs-station", id },
         vehicleSelection: null,
         stopSelection: null,
-        displayedStops: stopsGrouped,
+        displayedStops: [],
       });
 
       if (flyTo) {

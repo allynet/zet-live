@@ -216,6 +216,7 @@ export function MapContainer() {
   const selectedGbfsStationId = selection?.type === "gbfs-station" ? selection.id : null;
   const gbfsLayerVisible =
     showGbfsStations && (selection === null || selection.type === "gbfs-station");
+  const vehiclesLayerVisible = selection?.type !== "gbfs-station";
   const followingRoute = vehicleSelection?.route ?? null;
 
   const selectedVehicle =
@@ -467,8 +468,9 @@ export function MapContainer() {
       "icon-allow-overlap": true,
       "icon-ignore-placement": true,
       "symbol-sort-key": ["get", "sortKey"],
+      visibility: vehiclesLayerVisible ? "visible" : "none",
     }),
-    [],
+    [vehiclesLayerVisible],
   );
 
   const vehicleMarkerPaint: Record<string, unknown> | undefined = useMemo(
@@ -561,7 +563,7 @@ export function MapContainer() {
             layout={{
               "line-join": "round",
               "line-cap": "round",
-              visibility: searchActive ? "none" : "visible",
+              visibility: searchActive || !vehiclesLayerVisible ? "none" : "visible",
             }}
           />
           <Layer
@@ -575,7 +577,7 @@ export function MapContainer() {
               "icon-image": "arrow-head",
               "text-ignore-placement": true,
               "icon-size": 0.25,
-              visibility: searchActive ? "none" : "visible",
+              visibility: searchActive || !vehiclesLayerVisible ? "none" : "visible",
             }}
           />
         </Source>
