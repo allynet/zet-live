@@ -226,8 +226,8 @@ export function App() {
         ) : null}
       </BottomSheet>
 
-      <div className="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2 *:pointer-events-auto">
-        <div className="flex flex-col gap-2">
+      <div className="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2">
+        <div className="pointer-events-none flex flex-col gap-2 *:pointer-events-auto">
           <SettingsButton />
           <FeedbackButton />
           <div className="h-4">
@@ -237,11 +237,11 @@ export function App() {
           </div>
         </div>
 
-        <div className="w-full max-w-md">
+        <div className="pointer-events-none w-full max-w-md *:pointer-events-auto">
           <SearchBar />
         </div>
 
-        <div className="pointer-events-none col-span-2">
+        <div className="pointer-events-none col-span-2 *:pointer-events-auto">
           <NoticeBar />
         </div>
       </div>
