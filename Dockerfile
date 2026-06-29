@@ -67,6 +67,20 @@ RUN bun run build
 
 
 ##########
+# Step 2b #
+##########
+##
+## Build admin frontend
+##
+FROM oven/bun:1 AS frontend-admin
+WORKDIR /app
+COPY ./frontend-admin/package.json ./frontend-admin/bun.lock ./
+RUN bun install
+COPY ./frontend-admin/ .
+RUN bun run build
+
+
+##########
 # Step 3 #
 ##########
 ##
@@ -105,6 +119,7 @@ ARG RUST_TARGET
 ARG APP_FEATURES
 ARG BINARY_NAME
 COPY --from=frontend /app/dist ../frontend/dist
+COPY --from=frontend-admin /app/dist ../frontend-admin/dist
 RUN --mount=type=bind,target=.,source=./backend,rw \
   --mount=type=bind,target=.git,source=./.git,ro \
   cargo build \

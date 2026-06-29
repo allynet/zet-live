@@ -83,11 +83,16 @@ Loaded by `dotenvy::dotenv()` (in `main.rs`) and by the backend justfile
   GTFS-RT realtime, GTFS schedule, and GBFS. The server waits for an initial
   realtime + schedule update before serving.
 - **API routes**: `/api/v1/*` in `src/server/routes/v1/`. The frontend is served
-  as the router fallback (`routes/frontend/`).
+  as the router fallback (`routes/frontend/`, embedding `../frontend/dist`).
 - **WebSocket**: real-time vehicle / active-stop / GBFS-station updates via
   `/api/v1/ws`. Binary frames are CBOR-encoded (`minicbor-serde`).
-- **Admin API**: a separate listener (`src/admin/`) gated by `ADMIN_KEY` +
-  `ADMIN_BIND_TO`. Not started unless both are set.
+- **Admin API + UI**: a separate listener (`src/admin/`) gated by `ADMIN_KEY` +
+  `ADMIN_BIND_TO`. Not started unless both are set. `/api/*` is the token-authed
+  admin API; everything else is the admin SPA (`src/admin/static_assets.rs`,
+  embedding `../frontend-admin/dist`). Both `frontend/dist` and
+  `frontend-admin/dist` must exist at compile time — run `just build` (or at
+  least `just frontend build && just frontend-admin build`) before building the
+  backend.
 - **Database**: libsql/SQLite via **sqlx**. Connection pool of 20 with WAL and a
   tuned PRAGMA block in `src/database/mod.rs`; `PRAGMA optimize` runs hourly.
 - **Protobuf**: GTFS-RT proto in `backend/protobuf/`. `build.rs` compiles it via

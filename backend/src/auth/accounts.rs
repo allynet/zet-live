@@ -473,6 +473,8 @@ pub struct UserSummary {
     pub display_name: Option<String>,
     pub email: Option<String>,
     pub providers: Vec<String>,
+    pub created_at: String,
+    pub notice_count: i64,
 }
 
 #[derive(Debug)]
@@ -481,8 +483,6 @@ pub struct DeleteUserResult {
     pub session_ids: Vec<String>,
 }
 
-/// Permanently remove an account and all associated data (cascade). Feedback
-/// rows keep their content but lose the user association (`ON DELETE SET NULL`).
 pub async fn delete_user(user_id: &str) -> Result<DeleteUserResult, sqlx::Error> {
     let sessions = session::list_sessions_for_user(user_id).await?;
     let session_ids: Vec<String> = sessions.into_iter().map(|s| s.id).collect();
@@ -507,7 +507,9 @@ pub async fn list_users() -> Result<Vec<UserSummary>, sqlx::Error> {
                  (SELECT GROUP_CONCAT(provider, ',' ORDER BY created_at)
                   FROM user_oauth_identities WHERE user_id = u.id),
                  ''
-               ) AS \"providers!: String\"
+               ) AS \"providers!: String\",
+               u.created_at AS \"created_at!: String\",
+               (SELECT COUNT(*) FROM user_notices WHERE user_id = u.id) AS \"notice_count!: i64\"
         FROM users u
         ORDER BY u.created_at DESC
         "
@@ -526,6 +528,71 @@ pub async fn list_users() -> Result<Vec<UserSummary>, sqlx::Error> {
             } else {
                 u.providers.split(',').map(String::from).collect()
             },
+            created_at: u.created_at,
+            notice_count: u.notice_count,
         })
         .collect())
+}
+
+pub async fn user_summary_by_id(id: &str) -> Result<Option<UserSummary>, sqlx::Error> {
+    let row = sqlx::query!(
+        "
+        SELECT u.id,
+               u.display_name,
+               u.email,
+               COALESCE(
+                 (SELECT GROUP_CONCAT(provider, ',' ORDER BY created_at)
+                  FROM user_oauth_identities WHERE user_id = u.id),
+                 ''
+               ) AS \"providers!: String\",
+               u.created_at AS \"created_at!: String\",
+               (SELECT COUNT(*) FROM user_notices WHERE user_id = u.id) AS \"notice_count!: i64\"
+        FROM users u
+        WHERE u.id = ?
+        ",
+        id,
+    )
+    .fetch_optional(&Database::pool())
+    .await?;
+
+    Ok(row.map(|u| UserSummary {
+        id: u.id,
+        display_name: u.display_name,
+        email: u.email,
+        providers: if u.providers.is_empty() {
+            Vec::new()
+        } else {
+            u.providers.split(',').map(String::from).collect()
+        },
+        created_at: u.created_at,
+        notice_count: u.notice_count,
+    }))
+}
+
+pub async fn update_user(
+    user_id: &str,
+    display_name: Option<String>,
+    email: Option<String>,
+) -> Result<Option<UserSummary>, sqlx::Error> {
+    let now = jiff::Zoned::now().to_string();
+    let res = sqlx::query!(
+        "
+        UPDATE users
+        SET display_name = COALESCE(?, display_name),
+            email        = COALESCE(?, email),
+            updated_at   = ?
+        WHERE id = ?
+        ",
+        display_name,
+        email,
+        now,
+        user_id,
+    )
+    .execute(&Database::pool())
+    .await?;
+
+    if res.rows_affected() == 0 {
+        return Ok(None);
+    }
+    user_summary_by_id(user_id).await
 }

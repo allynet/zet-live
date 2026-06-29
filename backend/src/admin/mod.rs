@@ -9,6 +9,7 @@ pub mod feedback;
 pub mod metadata;
 pub mod router;
 pub mod settings;
+pub mod static_assets;
 pub mod user_notices;
 
 pub static ADMIN_SETTINGS: LazyLock<RwLock<settings::AdminSettings>> =

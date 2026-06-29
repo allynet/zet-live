@@ -1,0 +1,42 @@
+set dotenv-load
+set positional-arguments
+
+default:
+    @just --list
+
+install:
+    bun install
+
+@_check-install:
+    if [ ! -d node_modules ]; then \
+      just install; \
+    fi \
+
+build: _check-install
+    bun run build
+
+dev: _check-install
+    bun run dev
+
+[parallel]
+check: type-check lint-check fmt-check
+
+fix: fmt lint
+
+lint:
+    bun run lint:fix
+
+lint-check:
+    bun run lint
+
+fmt:
+    bun run format
+
+fmt-check:
+    bun run format:check
+
+type-check:
+    bun run --bun tsc --noEmit
+
+preview: build
+    bun run preview

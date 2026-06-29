@@ -17,21 +17,26 @@ REST/WebSocket API and the baked-in frontend static files.
 
 - `backend/` — Rust (edition 2024) Axum server. Single crate `zet-live`.
 - `frontend/` — React 19 + Vite + Tailwind CSS v4. Managed with bun.
+- `frontend-admin/` — React 19 + Vite + Tailwind + TanStack Router SPA for the
+  admin UI. Separate app from `frontend/`, served same-origin by the admin
+  listener (see `frontend-admin/AGENTS.md`).
 - `docs/` — planning docs only.
 - `Dockerfile`, `.github/workflows/` — build & deploy (cross-cutting; see below).
 
 ## Root commands (delegates to sub-justfiles)
 
 ```
-just backend <args>     # runs `just <args>` in backend/
-just frontend <args>    # runs `just <args>` in frontend/
-just build              # frontend build && backend build
-just run <args>         # build, then backend run
+just backend <args>          # runs `just <args>` in backend/
+just frontend <args>         # runs `just <args>` in frontend/
+just frontend-admin <args>   # runs `just <args>` in frontend-admin/
+just build                   # frontend build && frontend-admin build && backend build
+just run <args>              # build, then backend run
 ```
 
 The root justfile sets `dotenv-load := false`. The sub-justfiles enable it
-(backend reads `backend/.env`, frontend reads `frontend/.env`). The root `.env`
-is **not** auto-loaded by the root justfile.
+(backend reads `backend/.env`, frontend reads `frontend/.env`,
+frontend-admin reads `frontend-admin/.env`). The root `.env` is **not**
+auto-loaded by the root justfile.
 
 No tests exist in either the frontend or the backend (yet).
 
@@ -43,9 +48,9 @@ No tests exist in either the frontend or the backend (yet).
 
 ## Docker / deploy (cross-cutting)
 
-- Multi-stage Dockerfile: cargo-chef → bun frontend build → Rust build (with UPX
-  compression) → `scratch` runner. **Docker build targets
-  `x86_64-unknown-linux-gnu`**, whereas dev justfiles target
+- Multi-stage Dockerfile: cargo-chef → bun frontend build + bun frontend-admin
+  build → Rust build (with UPX compression) → `scratch` runner. **Docker build
+  targets `x86_64-unknown-linux-gnu`**, whereas dev justfiles target
   `x86_64-unknown-linux-musl` — don't assume one target everywhere.
 - CI (`.github/workflows/`): push to `main` triggers build on Blacksmith
   runners, pushes to Docker Hub (`allypost/zet-live`), notifies Watchtower. Uses

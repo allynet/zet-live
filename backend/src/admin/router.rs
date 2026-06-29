@@ -4,7 +4,7 @@ use axum::{
     Router,
     extract::Path,
     http::{HeaderMap, StatusCode},
-    response::{Html, IntoResponse, Response},
+    response::{IntoResponse, Response},
     routing::{delete, get, post, put},
 };
 use axum_extra::extract::Query;
@@ -48,7 +48,10 @@ pub fn create_admin_router(state: AdminState) -> Router {
             put(update_auth_provider).delete(delete_auth_provider),
         )
         .route("/users", get(list_users))
-        .route("/users/{id}", delete(delete_user_account))
+        .route(
+            "/users/{id}",
+            get(get_user).patch(update_user).delete(delete_user_account),
+        )
         .route("/users/{id}/revoke-sessions", post(revoke_user_sessions))
         .route("/sessions", get(list_sessions))
         .route("/sessions/{id}", delete(delete_session))
@@ -65,12 +68,7 @@ pub fn create_admin_router(state: AdminState) -> Router {
 
     Router::new()
         .nest("/api", api)
-        .route("/", get(admin_html))
-        .route("/index.html", get(admin_html))
-}
-
-async fn admin_html() -> impl IntoResponse {
-    Html(include_str!("html/index.html"))
+        .merge(crate::admin::static_assets::create_service())
 }
 
 async fn auth_middleware(
@@ -458,6 +456,83 @@ async fn list_users() -> impl IntoResponse {
             warn!(error = %e, "Failed to list users");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
+    }
+}
+
+/// `GET /api/users/{id}` -> full per-user detail (profile + sessions + notices
+/// + submitted feedback) in a single payload.
+async fn get_user(Path(id): Path<String>) -> Response {
+    match crate::auth::accounts::user_summary_by_id(&id).await {
+        Ok(Some(user)) => axum::Json(build_user_detail(user).await).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            warn!(error = %e, "Failed to load user detail");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateUserRequest {
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    email: Option<String>,
+}
+
+/// `PATCH /api/users/{id}` -> update display name / email (COALESCE patch:
+/// omitted fields are left unchanged).
+async fn update_user(
+    Path(id): Path<String>,
+    axum::Json(body): axum::Json<UpdateUserRequest>,
+) -> Response {
+    if body.display_name.is_none() && body.email.is_none() {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    match crate::auth::accounts::update_user(&id, body.display_name, body.email).await {
+        Ok(Some(user)) => axum::Json(build_user_detail(user).await).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            warn!(error = %e, "Failed to update user");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UserDetailResponse {
+    id: String,
+    display_name: Option<String>,
+    email: Option<String>,
+    providers: Vec<String>,
+    created_at: String,
+    notice_count: i64,
+    sessions: Vec<crate::auth::session::SessionInfo>,
+    notices: Vec<crate::admin::settings::GlobalNotice>,
+    feedback: Vec<crate::admin::feedback::FeedbackRow>,
+}
+
+/// Assemble the composite user-detail payload from a freshly-read summary.
+async fn build_user_detail(user: crate::auth::accounts::UserSummary) -> UserDetailResponse {
+    let sessions = crate::auth::session::list_sessions_for_user(&user.id)
+        .await
+        .unwrap_or_default();
+    let notices = crate::admin::user_notices::for_user(&user.id).await;
+    let feedback = crate::admin::feedback::list_for_user(&user.id)
+        .await
+        .unwrap_or_default();
+    UserDetailResponse {
+        id: user.id,
+        display_name: user.display_name,
+        email: user.email,
+        providers: user.providers,
+        created_at: user.created_at,
+        notice_count: user.notice_count,
+        sessions,
+        notices,
+        feedback,
     }
 }
 

@@ -234,7 +234,7 @@ export function App() {
         ) : null}
       </BottomSheet>
 
-      <div className="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2 *:pointer-events-auto">
+      <div className="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2">
         <div className="pointer-events-none flex flex-col gap-2 *:pointer-events-auto">
           <SettingsButton />
           <FeedbackButton />

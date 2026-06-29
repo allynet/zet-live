@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::database::Database;
 
-/// The end-user-facing status, derived from `reply`/`dismissed`/`handled`.
 const fn status_of(reply: Option<&str>, dismissed: bool, handled: bool) -> &'static str {
     if reply.is_some() {
         "replied"
@@ -73,7 +72,7 @@ macro_rules! map_row {
 }
 
 pub async fn list(filter: &FeedbackFilter) -> Result<Vec<FeedbackRow>, sqlx::Error> {
-    let rows: Vec<FeedbackRow> = match filter.handled.as_deref() {
+    let rows = match filter.handled.as_deref() {
         // "new" = open (not acknowledged, not dismissed, no reply)
         Some("new") => sqlx::query!(
             "
@@ -181,6 +180,44 @@ pub async fn delete(id: i64) -> Result<bool, sqlx::Error> {
         .execute(&Database::pool())
         .await?;
     Ok(result.rows_affected() > 0)
+}
+
+pub async fn list_for_user(user_id: &str) -> Result<Vec<FeedbackRow>, sqlx::Error> {
+    let rows = sqlx::query!(
+        "
+        SELECT
+              f.id            AS \"id!\"
+            , f.category      AS \"category!\"
+            , f.message       AS \"message!\"
+            , f.name
+            , f.contact
+            , f.meta_url
+            , f.meta_ua
+            , f.meta_lang
+            , f.meta_build
+            , f.ip            AS \"ip!\"
+            , f.created_at    AS \"created_at!\"
+            , f.handled       AS \"handled!\"
+            , f.dismissed     AS \"dismissed!\"
+            , f.reply
+            , f.replied_at
+            , f.user_id
+            , u.email         AS \"user_email\"
+            , u.display_name  AS \"user_display_name\"
+        FROM feedback f
+        LEFT JOIN users u ON u.id = f.user_id
+        WHERE f.user_id = ?
+        ORDER BY f.created_at DESC
+        ",
+        user_id,
+    )
+    .fetch_all(&Database::pool())
+    .await?
+    .into_iter()
+    .map(|r| map_row!(r))
+    .collect();
+
+    Ok(rows)
 }
 
 async fn fetch_one(id: i64) -> Result<Option<FeedbackRow>, sqlx::Error> {
