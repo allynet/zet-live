@@ -1,4 +1,4 @@
-import { MapContainer } from "@/components/map-container";
+import { lazy, Suspense, useEffect, useMemo, type ReactNode } from "react";
 import { BottomSheet } from "@/components/bottom-sheet";
 import { StopSheet } from "@/components/stop-sheet";
 import { VehicleSheet } from "@/components/vehicle-sheet";
@@ -17,7 +17,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useSettingsSync } from "@/hooks/use-settings-sync";
 import { useStore } from "@/store";
 import { findNextStopIndex } from "@/app/trip-stop-times";
-import { useEffect, type ReactNode } from "react";
 import { SettingsButton, SettingsModal } from "./components/settings-modal";
 import { FeedbackButton, FeedbackModal } from "./components/feedback-modal";
 import { AuthButton } from "./components/auth-button";
@@ -25,11 +24,20 @@ import { AuthModal } from "./components/auth-modal";
 import { NoticeBar } from "./components/notice-bar";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { useSetting } from "./settings";
-import { PLAUSIBLE_API_URL, PLAUSIBLE_SCRIPT_URL, PLAUSIBLE_SITE_URL } from "./app/consts";
+import {
+  PLAUSIBLE_API_URL,
+  PLAUSIBLE_SCRIPT_URL,
+  PLAUSIBLE_SITE_URL,
+  SITE_TITLE,
+} from "./app/consts";
 import imgAppleTouchIcon from "@/assets/img/favicon/apple-touch-icon.png";
 import imgFavicon16x16 from "@/assets/img/favicon/favicon-16x16.png";
 import imgFavicon32x32 from "@/assets/img/favicon/favicon-32x32.png";
 import imgFaviconSvg from "@/assets/img/favicon/favicon.svg";
+
+const MapContainer = lazy(() =>
+  import("@/components/map-container").then((m) => ({ default: m.MapContainer })),
+);
 
 export function App() {
   useWebSocket();
@@ -71,6 +79,22 @@ export function App() {
   const stopArrivalTimes = stopSelection?.arrivalTimes ?? null;
   const tripFetchError = vehicleSelection?.fetchError ?? null;
   const followEnabled = vehicleSelection?.followEnabled ?? false;
+
+  const selectionType = selection?.type ?? null;
+  const stopName = stopSelection?.name ?? null;
+  const documentSubject = useMemo(() => {
+    if (selectedVehicle) {
+      return `${selectedVehicle.routeId} ${selectedVehicle.getDisplayName()}`;
+    }
+    if (selectionType === "stop" && stopName) {
+      return `${stopName} (stanica)`;
+    }
+    if (selectedGbfsStation) {
+      return `${selectedGbfsStation.getDisplayName()} [Bajs]`;
+    }
+    return "Trenutno Stanje";
+  }, [selectedVehicle, selectedGbfsStation, selectionType, stopName]);
+  const documentTitle = `${documentSubject} | ${SITE_TITLE}`;
 
   const nextStopIndex = selectedVehicle
     ? findNextStopIndex(
@@ -185,72 +209,79 @@ export function App() {
   return (
     <>
       <>
+        <title>{documentTitle}</title>
+        <meta property="og:title" content={documentTitle} />
         <link rel="apple-touch-icon" sizes="180x180" href={imgAppleTouchIcon} />
         <link rel="icon" type="image/png" sizes="16x16" href={imgFavicon16x16} />
         <link rel="icon" type="image/png" sizes="32x32" href={imgFavicon32x32} />
         <link rel="icon" type="image/svg+xml" href={imgFaviconSvg} />
       </>
-      <LoadingScreen />
-      <MapContainer />
-      <BottomSheet
-        open={isOpen}
-        title={sheetTitle}
-        onClose={clearSelection}
-        minimizedBody={minimizedBody}
-      >
-        {selectedVehicle ? (
-          <VehicleSheet
-            vehicle={selectedVehicle}
-            displayedStops={displayedStops}
-            nextStopIndex={nextStopIndex}
-            tripStopTimes={tripStopTimes}
-            tripFetchError={tripFetchError}
-            followEnabled={followEnabled}
-            onToggleFollow={() => {
-              setFollowEnabled(!followEnabled);
-            }}
-            onLocate={() => {
-              if (selectedVehicle) {
-                useStore.setState({
-                  flyToTarget: {
-                    longitude: selectedVehicle.lng,
-                    latitude: selectedVehicle.lat,
-                  },
-                });
-              }
-            }}
-            onStopClick={selectStop}
-          />
-        ) : selectedStop ? (
-          <StopSheet
-            stop={selectedStop}
-            arrivals={stopArrivalTimes}
-            onArrivalClick={(vehicleId, tripId) => {
-              selectVehicle(vehicleId, tripId, true);
-            }}
-          />
-        ) : selectedGbfsStation ? (
-          <GbfsStationSheet station={selectedGbfsStation} />
-        ) : null}
-      </BottomSheet>
+      <main className="h-full">
+        <h1 className="sr-only">ZET Live — {documentSubject}</h1>
+        <LoadingScreen />
+        <Suspense fallback={null}>
+          <MapContainer />
+        </Suspense>
+        <BottomSheet
+          open={isOpen}
+          title={sheetTitle}
+          onClose={clearSelection}
+          minimizedBody={minimizedBody}
+        >
+          {selectedVehicle ? (
+            <VehicleSheet
+              vehicle={selectedVehicle}
+              displayedStops={displayedStops}
+              nextStopIndex={nextStopIndex}
+              tripStopTimes={tripStopTimes}
+              tripFetchError={tripFetchError}
+              followEnabled={followEnabled}
+              onToggleFollow={() => {
+                setFollowEnabled(!followEnabled);
+              }}
+              onLocate={() => {
+                if (selectedVehicle) {
+                  useStore.setState({
+                    flyToTarget: {
+                      longitude: selectedVehicle.lng,
+                      latitude: selectedVehicle.lat,
+                    },
+                  });
+                }
+              }}
+              onStopClick={selectStop}
+            />
+          ) : selectedStop ? (
+            <StopSheet
+              stop={selectedStop}
+              arrivals={stopArrivalTimes}
+              onArrivalClick={(vehicleId, tripId) => {
+                selectVehicle(vehicleId, tripId, true);
+              }}
+            />
+          ) : selectedGbfsStation ? (
+            <GbfsStationSheet station={selectedGbfsStation} />
+          ) : null}
+        </BottomSheet>
 
-      <div className="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2">
-        <div className="pointer-events-none flex flex-col gap-2 *:pointer-events-auto">
-          <SettingsButton />
-          <FeedbackButton />
-          <AuthButton />
-          <div className="h-4">
-            <div className="absolute ml-1.5">
-              <StatusBar />
+        <div className="pointer-events-none absolute top-2 right-12 left-2 z-1000 grid grid-cols-[minmax(0,auto)_1fr] gap-2">
+          <div className="pointer-events-none flex flex-col gap-2 *:pointer-events-auto">
+            <SettingsButton />
+            <FeedbackButton />
+            <AuthButton />
+            <div className="h-4">
+              <div className="absolute ml-1.5">
+                <StatusBar />
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="pointer-events-none flex flex-col gap-2 *:pointer-events-auto">
-          <SearchBar />
-          <NoticeBar />
+          <div className="pointer-events-none flex flex-col gap-2 *:pointer-events-auto">
+            <SearchBar />
+            <NoticeBar />
+          </div>
         </div>
-      </div>
+      </main>
 
       <Toaster position="top-center" />
       <SettingsModal />

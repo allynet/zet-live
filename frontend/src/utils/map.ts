@@ -1,4 +1,4 @@
-import { MapInstance } from "react-map-gl/maplibre";
+import type { MapInstance } from "react-map-gl/maplibre";
 
 export function calculateLatOffset(map: MapInstance | null | undefined) {
   const zoom = map?.getZoom() ?? 13;

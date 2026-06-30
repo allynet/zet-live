@@ -1,6 +1,6 @@
 # ZET Live Frontend
 
-Preact + Vite + Tailwind CSS app for live tracking of ZET (Zagreb) public transit vehicles.
+React 19 + Vite + Tailwind CSS app for live tracking of ZET (Zagreb) public transit vehicles.
 
 ## Commands
 
@@ -10,6 +10,10 @@ Preact + Vite + Tailwind CSS app for live tracking of ZET (Zagreb) public transi
 | `bun dev`     | Starts local dev server                     |
 | `bun build`   | Build production site to `./dist/`          |
 | `bun preview` | Preview production build locally            |
+
+The social preview image (`public/og.png`) is generated from
+`src/assets/og/og.svg`. After editing the SVG, regenerate it with
+`just frontend og-image` (requires `rsvg-convert` / librsvg).
 
 ## Environment Variables
 

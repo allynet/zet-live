@@ -3,9 +3,9 @@ use std::{
     hash::{Hash, Hasher},
     sync::{
         Arc, LazyLock, OnceLock,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicI64, AtomicU64, Ordering},
     },
-    time::Instant,
+    time::{Instant, SystemTime},
 };
 
 use _entity::{gbfs::GbfsStation, vehicle::Vehicle};
@@ -115,6 +115,7 @@ pub struct InitialState {
     active_stops: InitialStateEntry,
     notices: InitialStateEntry,
     gbfs_stations: InitialStateEntry,
+    simple_stops: InitialStateEntry,
 }
 #[allow(dead_code)]
 impl InitialState {
@@ -124,6 +125,7 @@ impl InitialState {
             active_stops: RwLock::new(Bytes::new()),
             notices: RwLock::new(Bytes::new()),
             gbfs_stations: RwLock::new(Bytes::new()),
+            simple_stops: RwLock::new(Bytes::new()),
         }
     }
 
@@ -157,6 +159,14 @@ impl InitialState {
 
     pub async fn update_gbfs_stations(&self, gbfs_stations: InitialStateData) {
         *self.gbfs_stations.write().await = gbfs_stations;
+    }
+
+    pub async fn simple_stops(&self) -> tokio::sync::RwLockReadGuard<'_, InitialStateData> {
+        self.simple_stops.read().await
+    }
+
+    pub async fn update_simple_stops(&self, simple_stops: InitialStateData) {
+        *self.simple_stops.write().await = simple_stops;
     }
 }
 
@@ -254,6 +264,77 @@ async fn broadcast_gbfs_snapshot(app_state: &Arc<V1AppState>) {
     app_state.send_transmission(Transmission::BroadcastToAll(stations_bytes));
 }
 
+async fn broadcast_simple_stops(app_state: &Arc<V1AppState>, stops: Vec<Vec<MixedValue>>) {
+    let now = now_millis();
+    if now.wrapping_sub(LAST_SIMPLE_STOPS_BROADCAST_MS.load(Ordering::Relaxed))
+        < STOP_BROADCAST_INTERVAL_MS
+    {
+        return;
+    }
+
+    let bytes = match minicbor_serde::to_vec(Versioned::new(1, Broadcast::SimpleStops(stops))) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            error!(?e, "Failed to serialize simple stops");
+            return;
+        }
+    };
+
+    let hash = {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        bytes.hash(&mut hasher);
+        hasher.finish()
+    };
+    if hash == LAST_SIMPLE_STOPS_HASH.swap(hash, Ordering::Relaxed) {
+        trace!("Simple stops unchanged, skipping broadcast");
+        return;
+    }
+
+    LAST_SIMPLE_STOPS_BROADCAST_MS.store(now, Ordering::Relaxed);
+    let bytes = Bytes::from(bytes);
+
+    INITIAL_STATE.update_simple_stops(bytes.clone()).await;
+
+    app_state.send_transmission(Transmission::BroadcastToAll(bytes));
+}
+
+async fn broadcast_active_stops(app_state: &Arc<V1AppState>, mut active_stop_ids: Vec<String>) {
+    let now = now_millis();
+    if now.wrapping_sub(LAST_ACTIVE_STOPS_BROADCAST_MS.load(Ordering::Relaxed))
+        < STOP_BROADCAST_INTERVAL_MS
+    {
+        return;
+    }
+
+    active_stop_ids.sort_unstable();
+
+    let bytes =
+        match minicbor_serde::to_vec(Versioned::new(1, Broadcast::ActiveStops(active_stop_ids))) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                error!(?e, "Failed to serialize active stops");
+                return;
+            }
+        };
+
+    let hash = {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        bytes.hash(&mut hasher);
+        hasher.finish()
+    };
+    if hash == LAST_ACTIVE_STOPS_HASH.swap(hash, Ordering::Relaxed) {
+        trace!("Active stops unchanged, skipping broadcast");
+        return;
+    }
+
+    LAST_ACTIVE_STOPS_BROADCAST_MS.store(now, Ordering::Relaxed);
+    let bytes = Bytes::from(bytes);
+
+    INITIAL_STATE.update_active_stops(bytes.clone()).await;
+
+    app_state.send_transmission(Transmission::BroadcastToAll(bytes));
+}
+
 pub async fn fetch_gbfs_stations() -> Result<Vec<GbfsStation>, sqlx::Error> {
     let rows = sqlx::query!(
         "
@@ -295,6 +376,18 @@ pub static SIMPLE_STOPS: LazyLock<RwLock<Vec<Vec<MixedValue>>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));
 
 static LAST_GBFS_HASH: AtomicU64 = AtomicU64::new(0);
+static LAST_SIMPLE_STOPS_HASH: AtomicU64 = AtomicU64::new(0);
+static LAST_ACTIVE_STOPS_HASH: AtomicU64 = AtomicU64::new(0);
+
+const STOP_BROADCAST_INTERVAL_MS: i64 = 30_000;
+static LAST_SIMPLE_STOPS_BROADCAST_MS: AtomicI64 = AtomicI64::new(0);
+static LAST_ACTIVE_STOPS_BROADCAST_MS: AtomicI64 = AtomicI64::new(0);
+
+fn now_millis() -> i64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
 
 #[allow(clippy::too_many_lines)]
 fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
@@ -375,7 +468,8 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
                 .await;
 
                 match stops {
-                    Ok(stops) => {
+                    Ok(mut stops) => {
+                        stops.sort_by(|a, b| a.stop_id.cmp(&b.stop_id));
                         let stops = stops
                             .into_iter()
                             .filter_map(|x| {
@@ -390,6 +484,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
 
                         if !stops.is_empty() {
                             SIMPLE_STOPS.write().await.clone_from(&stops);
+                            broadcast_simple_stops(&active_stops_app_state, stops).await;
                         }
                     }
                     Err(e) => {
@@ -433,24 +528,7 @@ fn process_feed(app_state: Arc<V1AppState>, feed: Arc<FeedMessage>) {
             active_stop_ids
         };
 
-        let active_stops = Versioned::new(1, Broadcast::ActiveStops(active_stops));
-        let active_stops = minicbor_serde::to_vec(&active_stops);
-
-        let active_stops = match active_stops {
-            Ok(active_stops) => active_stops,
-            Err(e) => {
-                error!(?e, "Error serializing active stops");
-                return;
-            }
-        };
-
-        let active_stops = Bytes::from(active_stops);
-
-        INITIAL_STATE
-            .update_active_stops(active_stops.clone())
-            .await;
-
-        active_stops_app_state.send_transmission(Transmission::BroadcastToAll(active_stops));
+        broadcast_active_stops(&active_stops_app_state, active_stops).await;
     });
 
     let vehicles_feed = feed;
@@ -999,6 +1077,7 @@ pub enum Broadcast {
     UserNotices(Vec<GlobalNotice>),
     Toast(ToastData),
     GbfsStations(Vec<Vec<MixedValue>>),
+    SimpleStops(Vec<Vec<MixedValue>>),
 }
 
 #[derive(Debug, serde::Serialize)]

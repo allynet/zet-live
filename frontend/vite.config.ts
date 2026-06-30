@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 
 const FAVICON_DIR = fileURLToPath(new URL("./src/assets/img/favicon/", import.meta.url));
 
@@ -32,10 +32,6 @@ const MANIFEST_BASE = {
   categories: ["navigation", "travel", "utilities"],
 } as const;
 
-// Emits the web app manifest as a generated build asset so its icon URLs flow
-// through Vite's asset pipeline (hashed, immutable) instead of pointing at raw
-// public/ files. The manifest itself stays at a stable root URL (/site.webmanifest)
-// so index.html's <link rel="manifest"> never needs rewriting.
 function webmanifest(): Plugin {
   return {
     name: "zet-live:webmanifest",
@@ -81,43 +77,141 @@ function iconEntry(
   return icon.purpose === "any" ? entry : { ...entry, purpose: icon.purpose };
 }
 
-export default defineConfig({
-  plugins: [react(), tailwindcss(), tsconfigPaths(), webmanifest()],
-  define: {
-    __DATE__: `"${new Date().toISOString()}"`,
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        assetFileNames: "_static/file.[name].[hash].[ext]",
-        chunkFileNames: "_static/chunk.[name].[hash].js",
-        entryFileNames: "_static/entry.[name].[hash].js",
-        manualChunks(id) {
-          if (id.includes("/style/") && id.endsWith(".json")) {
-            const name = id.split("/").pop()!.split(".").slice(0, -1).join(".");
+const SEO_PATHS = ["/", "/privacy-policy.html", "/tos.html"] as const;
 
-            return `map-style-${name}`;
+function sitemapXml(siteUrl: string): string {
+  const entries = SEO_PATHS.map(
+    (p) =>
+      `  <url>\n` +
+      `    <loc>${siteUrl}${p}</loc>\n` +
+      `    <xhtml:link rel="alternate" hreflang="hr" href="${siteUrl}${p}"/>\n` +
+      `  </url>`,
+  ).join("\n");
+
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"\n` +
+    `        xmlns:xhtml="http://www.w3.org/1999/xhtml">\n` +
+    `${entries}\n` +
+    `</urlset>\n`
+  );
+}
+
+function robotsTxt(siteUrl: string): string {
+  const lines = ["User-agent: *", "Allow: /"];
+  if (siteUrl) lines.push(`Sitemap: ${siteUrl}/sitemap.xml`);
+  return `${lines.join("\n")}\n`;
+}
+
+function seo(siteUrl: string): Plugin {
+  return {
+    name: "zet-live:seo",
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: "sitemap.xml", source: sitemapXml(siteUrl) });
+      this.emitFile({ type: "asset", fileName: "robots.txt", source: robotsTxt(siteUrl) });
+    },
+    configureServer(server) {
+      server.middlewares.use("/sitemap.xml", (_req, res) => {
+        res.setHeader("content-type", "application/xml; charset=utf-8");
+        res.end(sitemapXml(siteUrl));
+      });
+      server.middlewares.use("/robots.txt", (_req, res) => {
+        res.setHeader("content-type", "text/plain; charset=utf-8");
+        res.end(robotsTxt(siteUrl));
+      });
+    },
+  };
+}
+
+const MODULE_PRELOAD_CHUNKS = ["maplibre-gl", "map-container"];
+
+function modulePreloadMap(): Plugin {
+  return {
+    name: "zet-live:module-preload-map",
+    apply: "build",
+    transformIndexHtml: {
+      enforce: "post",
+      handler(_html, ctx) {
+        if (!ctx.bundle) return;
+        const tags = [];
+        for (const chunk of Object.values(ctx.bundle)) {
+          if (chunk.type !== "chunk") continue;
+          if (MODULE_PRELOAD_CHUNKS.some((t) => chunk.fileName.includes(t))) {
+            tags.push({
+              tag: "link",
+              attrs: { rel: "modulepreload", href: `/${chunk.fileName}` },
+              injectTo: "head-prepend",
+            });
           }
+        }
+        return tags;
+      },
+    },
+  };
+}
 
-          if (id.includes("/node_modules/maplibre-gl/")) {
-            return "map";
-          }
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "VITE_");
+  const siteUrl = (env.VITE_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
 
-          if (id.includes("/node_modules/framer-motion/") || id.includes("/node_modules/motion")) {
-            return "motion";
-          }
+  return {
+    plugins: [
+      react(),
+      tailwindcss(),
+      tsconfigPaths(),
+      webmanifest(),
+      seo(siteUrl),
+      modulePreloadMap(),
+    ],
+    define: {
+      __DATE__: `"${new Date().toISOString()}"`,
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          assetFileNames: "_static/file.[name].[hash].[ext]",
+          chunkFileNames: "_static/chunk.[name].[hash].js",
+          entryFileNames: "_static/entry.[name].[hash].js",
+          manualChunks(id) {
+            // Map packages (maplibre-gl + the react-map-gl/@vis.gl/@maplibre
+            // wrappers) are reachable only via the lazy MapContainer, so leave
+            // them to Rollup's default placement. Forcing them into a named
+            // chunk creates a static cross-chunk edge that makes the ~900 KB
+            // map bundle execute eagerly; returning null keeps them lazy.
+            if (
+              id.includes("/node_modules/maplibre-gl/") ||
+              id.includes("/node_modules/react-map-gl/") ||
+              id.includes("/node_modules/@vis.gl/react-map") ||
+              id.includes("/node_modules/@maplibre/")
+            ) {
+              return null;
+            }
 
-          if (id.includes("/node_modules/")) {
-            return "vendor";
-          }
+            if (id.includes("/style/") && id.endsWith(".json")) {
+              const name = id.split("/").pop()!.split(".").slice(0, -1).join(".");
 
-          return null;
+              return `map-style-${name}`;
+            }
+
+            if (
+              id.includes("/node_modules/framer-motion/") ||
+              id.includes("/node_modules/motion")
+            ) {
+              return "motion";
+            }
+
+            if (id.includes("/node_modules/")) {
+              return "vendor";
+            }
+
+            return null;
+          },
         },
       },
     },
-  },
-  server: {
-    host: true,
-    allowedHosts: true,
-  },
+    server: {
+      host: true,
+      allowedHosts: true,
+    },
+  };
 });

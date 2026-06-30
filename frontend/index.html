@@ -1,123 +1,154 @@
 <!doctype html>
 <html lang="hr-HR">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 
-    <title>Trenutno Stanje | ZET Live</title>
-    <meta
-      name="description"
-      content="Trenutni položaj i red vožnje svih javno dostupnih ZET vozila prikazan uživo"
-    />
-    <meta
-      name="keywords"
-      content="zet,live,live view,live map,prikaz uživo,vozila,vozila uživo,trenutni položaj tramvaja,trenutni položaj autobusa,gdje je tramvaj,gdje je autobus"
-    />
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="manifest" href="/site.webmanifest" />
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#111827" media="(prefers-color-scheme: dark)" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="ZET Live" />
-    <link rel="me" href="https://mastodon.social/@allypost" />
+  <title>Trenutno Stanje | ZET Live</title>
+  <meta name="description" content="Trenutni položaj i red vožnje svih javno dostupnih ZET vozila prikazan uživo" />
+  <meta name="keywords"
+    content="zet,live,live view,live map,prikaz uživo,vozila,vozila uživo,trenutni položaj tramvaja,trenutni položaj autobusa,gdje je tramvaj,gdje je autobus" />
 
-    <link rel="preconnect" href="https://cdn.igr.ec" />
-    <link rel="preconnect" href="https://tiles.openfreemap.org" />
-    <link rel="stylesheet" href="https://cdn.igr.ec/pkg/font/IosevkAlly/full-family.css" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <link rel="canonical" href="%VITE_PUBLIC_SITE_URL%/" />
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#111827" media="(prefers-color-scheme: dark)" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="ZET Live" />
+  <link rel="me" href="https://mastodon.social/@allypost" />
 
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="Trenutno Stanje | ZET Live" />
-    <meta
-      property="og:description"
-      content="Trenutni položaj i red vožnje svih javno dostupnih ZET vozila prikazan uživo"
-    />
-    <meta property="og:locale" content="hr_HR" />
-    <meta property="og:site_name" content="ZET Live" />
+  <link rel="preconnect" href="https://cdn.allypost.net" />
+  <link rel="preconnect" href="https://tiles.openfreemap.org" />
+  <link rel="stylesheet" href="https://cdn.allypost.net/pkg/font/IosevkAlly/full-family.css" />
 
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Trenutno Stanje | ZET Live" />
-    <meta
-      name="twitter:description"
-      content="Trenutni položaj i red vožnje svih javno dostupnih ZET vozila prikazan uživo"
-    />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Trenutno Stanje | ZET Live" />
+  <meta property="og:description"
+    content="Trenutni položaj i red vožnje svih javno dostupnih ZET vozila prikazan uživo" />
+  <meta property="og:locale" content="hr_HR" />
+  <meta property="og:site_name" content="ZET Live" />
+  <meta property="og:url" content="%VITE_PUBLIC_SITE_URL%/" />
+  <meta property="og:image" content="%VITE_PUBLIC_SITE_URL%/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="ZET Live — live praćenje ZET vozila" />
 
-    <meta name="fediverse:creator" content="@Allypost@mastodon.social" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Trenutno Stanje | ZET Live" />
+  <meta name="twitter:description"
+    content="Trenutni položaj i red vožnje svih javno dostupnih ZET vozila prikazan uživo" />
+  <meta name="twitter:image" content="%VITE_PUBLIC_SITE_URL%/og.png" />
+  <meta name="twitter:image:alt" content="ZET Live — live praćenje ZET vozila" />
 
-    <script>
-      (function () {
-        var d = matchMedia("(prefers-color-scheme:dark)").matches;
-        function ss(h) {
-          return h >= 20 || h < 6;
-        }
-        var t = "light",
-          ms = "3d";
-        try {
-          var r = JSON.parse(localStorage.getItem("settings") || "{}");
-          var mm = r.mapThemeMode || "manual";
-          if (mm === "manual") ms = r.mapStyle || "3d";
-          else if (mm === "time") {
-            ms = ss(new Date().getHours()) ? "3d.dark" : "3d";
-          } else ms = d ? "3d.dark" : "3d";
-          var m = r.uiThemeMode || "manual";
-          if (m === "manual") t = r.uiThemeManual || "light";
-          else if (m === "map") t = ms === "3d.dark" ? "dark" : "light";
-          else if (m === "time") t = ss(new Date().getHours()) ? "dark" : "light";
-          else t = d ? "dark" : "light";
-        } catch (e) {}
-        if (t === "dark") document.documentElement.classList.add("dark");
-      })();
+  <meta name="fediverse:creator" content="@Allypost@mastodon.social" />
+
+  <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebApplication",
+            "name": "ZET Live",
+            "alternateName": "ZET Live — trenutno stanje",
+            "url": "%VITE_PUBLIC_SITE_URL%/",
+            "description": "Trenutni položaj i red vožnje svih javno dostupnih ZET vozila prikazan uživo",
+            "inLanguage": "hr-HR",
+            "applicationCategory": "NavigationApplication",
+            "applicationSubCategory": "Transit",
+            "operatingSystem": "Web",
+            "browserRequirements": "Requires JavaScript",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+            "author": { "@id": "%VITE_PUBLIC_SITE_URL%/#person" },
+            "publisher": { "@id": "%VITE_PUBLIC_SITE_URL%/#person" }
+          },
+          {
+            "@type": "Person",
+            "@id": "%VITE_PUBLIC_SITE_URL%/#person",
+            "name": "Josip Igrec",
+            "email": "mailto:josip@igrec.dev",
+            "sameAs": [
+              "https://github.com/Allypost",
+              "https://mastodon.social/@allypost",
+              "https://bsky.app/profile/allypost.net",
+              "https://www.linkedin.com/in/josip-igrec/"
+            ]
+          }
+        ]
+      }
     </script>
-  </head>
-  <body>
-    <div id="app">
-      <div
-        id="loading-fallback"
-        style="
+
+  <script>
+    (function () {
+      var d = matchMedia("(prefers-color-scheme:dark)").matches;
+      function ss(h) {
+        return h >= 20 || h < 6;
+      }
+      var t = "light",
+        ms = "3d";
+      try {
+        var r = JSON.parse(localStorage.getItem("settings") || "{}");
+        var mm = r.mapThemeMode || "manual";
+        if (mm === "manual") ms = r.mapStyle || "3d";
+        else if (mm === "time") {
+          ms = ss(new Date().getHours()) ? "3d.dark" : "3d";
+        } else ms = d ? "3d.dark" : "3d";
+        var m = r.uiThemeMode || "manual";
+        if (m === "manual") t = r.uiThemeManual || "light";
+        else if (m === "map") t = ms === "3d.dark" ? "dark" : "light";
+        else if (m === "time") t = ss(new Date().getHours()) ? "dark" : "light";
+        else t = d ? "dark" : "light";
+      } catch (e) { }
+      if (t === "dark") document.documentElement.classList.add("dark");
+    })();
+  </script>
+</head>
+
+<body>
+  <div id="app">
+    <div id="loading-fallback" style="
           display: flex;
           align-items: center;
           justify-content: center;
           height: 100%;
           font-family: sans-serif;
-        "
-      >
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 16px">
-          <h1 id="loading-title" style="font-size: 24px; font-weight: bold; margin: 0">ZET Live</h1>
-          <div
-            id="loading-spinner"
-            style="
+        ">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 16px">
+        <h1 id="loading-title" style="font-size: 24px; font-weight: bold; margin: 0">ZET Live</h1>
+        <div id="loading-spinner" style="
               width: 20px;
               height: 20px;
               border: 2px solid #d1d5db;
               border-top-color: #111827;
               border-radius: 50%;
               animation: spin 1s linear infinite;
-            "
-          ></div>
-          <noscript>
-            <p style="color: #6b7280; font-size: 14px; margin: 0">
-              JavaScript is required to use ZET Live.
-            </p>
-          </noscript>
-        </div>
+            "></div>
+        <noscript>
+          <p style="color: #6b7280; font-size: 14px; margin: 0">
+            JavaScript is required to use ZET Live.
+          </p>
+        </noscript>
       </div>
-      <style>
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-
-        body {
-          min-height: 100dvh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-      </style>
     </div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+    <style>
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      body {
+        min-height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    </style>
+  </div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>

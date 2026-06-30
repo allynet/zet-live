@@ -7,12 +7,8 @@ import MapGL, {
   type MapLayerMouseEvent,
 } from "react-map-gl/maplibre";
 import { useRef, useCallback, useEffect, useMemo, useState } from "react";
-import type { StyleSpecification } from "maplibre-gl";
+import type { MapSourceDataEvent, MapStyleDataEvent, StyleSpecification } from "maplibre-gl";
 import type { FeatureCollection } from "geojson";
-import mapStyle3d from "@/data/maps/style/3d.json";
-import mapStyle3dDark from "@/data/maps/style/3d.dark.json";
-import mapStyleFlat from "@/data/maps/style/flat.json";
-import mapStyleSatellite from "@/data/maps/style/satellite.json";
 import { useStore, type VehicleLocationPair } from "@/store";
 import { type MapStyleId, useSetting } from "@/settings";
 import { useGeolocationPermission } from "@/hooks/use-geolocation-permission";
@@ -37,12 +33,14 @@ import {
   cancelAnimationOrIdleCallback,
 } from "@/utils/polyfill/requestSomeCallback";
 
-const styleMap = new Map<MapStyleId, StyleSpecification>([
-  ["3d", mapStyle3d as StyleSpecification],
-  ["3d.dark", mapStyle3dDark as StyleSpecification],
-  ["flat", mapStyleFlat as StyleSpecification],
-  ["satellite", mapStyleSatellite as StyleSpecification],
-]);
+const styleLoaders: Record<MapStyleId, () => Promise<StyleSpecification>> = {
+  "3d": async () => (await import("@/data/maps/style/3d.json")).default as StyleSpecification,
+  "3d.dark": async () =>
+    (await import("@/data/maps/style/3d.dark.json")).default as StyleSpecification,
+  flat: async () => (await import("@/data/maps/style/flat.json")).default as StyleSpecification,
+  satellite: async () =>
+    (await import("@/data/maps/style/satellite.json")).default as StyleSpecification,
+};
 
 const emptyGeoJSON: FeatureCollection = {
   type: "FeatureCollection",
@@ -107,7 +105,6 @@ function buildDeltaMoveFeatures(deltaMoveLines: VehicleLocationPair[]) {
     features: deltaMoveLines.map((x) => ({
       type: "Feature" as const,
       properties: { color: x.color, vehicleType: x.vehicleType },
-      beforeId: "route-stop-dot",
       geometry: {
         type: "LineString" as const,
         coordinates: [x.from, x.to],
@@ -162,7 +159,9 @@ function imperativeSetData(mapRef: { current: MapRef | null }, sourceId: string,
   const source = map?.getSource(sourceId);
   if (source && "setData" in source) {
     (source as { setData: (data: unknown) => void }).setData(data);
+    return true;
   }
+  return false;
 }
 
 function useRafSetData(
@@ -176,11 +175,13 @@ function useRafSetData(
     if (!ready) return;
     if (rafId.current !== null) cancelAnimationOrIdleCallback(rafId.current);
     const captured = data;
-    rafId.current = appRequestAnimationFrame(() => {
+    const attempt = () => {
       rafId.current = null;
       if (!mapRef.current) return;
-      imperativeSetData(mapRef, sourceId, captured);
-    });
+      if (imperativeSetData(mapRef, sourceId, captured)) return;
+      rafId.current = appRequestAnimationFrame(attempt);
+    };
+    rafId.current = appRequestAnimationFrame(attempt);
     return () => {
       if (rafId.current !== null) cancelAnimationOrIdleCallback(rafId.current);
     };
@@ -190,8 +191,29 @@ function useRafSetData(
 export function MapContainer() {
   const mapRef = useRef<MapRef>(null);
   const [iconsReady, setIconsReady] = useState(false);
+  const [styleReady, setStyleReady] = useState(false);
   const resolvedMapStyleId = themeStore((s) => s.resolvedMapStyleId);
-  const mapStyle = styleMap.get(resolvedMapStyleId) ?? (mapStyle3d as StyleSpecification);
+  const [loadedStyle, setLoadedStyle] = useState<{
+    id: MapStyleId;
+    style: StyleSpecification;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void styleLoaders[resolvedMapStyleId]().then((style) => {
+      if (!cancelled) setLoadedStyle({ id: resolvedMapStyleId, style });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedMapStyleId]);
+
+  useEffect(() => {
+    setStyleReady(false);
+    setIconsReady(false);
+  }, [resolvedMapStyleId]);
+
+  const mapStyle = loadedStyle && loadedStyle.id === resolvedMapStyleId ? loadedStyle.style : null;
   const vehicles = useStore((s) => s.vehicles);
   const selection = useStore((s) => s.selection);
   const vehicleSelection = useStore((s) => s.vehicleSelection);
@@ -250,21 +272,42 @@ export function MapContainer() {
     useStore.getState().clearSelection();
   }, []);
 
-  const onLoad = useCallback(() => {
+  const handleMapData = useCallback((e: MapStyleDataEvent | MapSourceDataEvent) => {
+    if (e.dataType === "style") {
+      setStyleReady(true);
+      setIconsReady(true);
+      if (!useStore.getState().mapReady) {
+        useStore.setState({ mapReady: true });
+      }
+      return;
+    }
+    if (
+      e.dataType === "source" &&
+      e.sourceId === "openmaptiles" &&
+      e.sourceDataType === "content" &&
+      !useStore.getState().mapReady
+    ) {
+      useStore.setState({ mapReady: true });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!styleReady) return;
     const map = mapRef.current?.getMap();
     if (!map) return;
-
+    map.setMaxBounds(useStore.getState().maxBounds);
+    if (map.hasImage("arrow-head")) return;
+    let cancelled = false;
     void (async () => {
       const arrowImage = await createArrowHeadImage("#00000077");
-      if (!map.hasImage("arrow-head")) {
+      if (!cancelled && !map.hasImage("arrow-head")) {
         map.addImage("arrow-head", arrowImage);
       }
-
-      map.setMaxBounds(useStore.getState().maxBounds);
-      setIconsReady(true);
-      useStore.setState({ mapReady: true });
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [styleReady]);
 
   const onDragStart = useCallback(() => {
     useStore.getState().setFollowEnabled(false);
@@ -397,7 +440,7 @@ export function MapContainer() {
   }, [iconsReady, vehiclesGeoJson]);
 
   const deltaMoveFeatures = useMemo(() => buildDeltaMoveFeatures(deltaMoveLines), [deltaMoveLines]);
-  useRafSetData(mapRef, "delta-move-lines", deltaMoveFeatures);
+  useRafSetData(mapRef, "delta-move-lines", deltaMoveFeatures, styleReady);
 
   const routeStopsFeatures = useMemo(() => {
     const filtered = searchMatchedStopIds
@@ -419,13 +462,13 @@ export function MapContainer() {
       })),
     };
   }, [displayedStops, nextStopId, searchMatchedStopIds]);
-  useRafSetData(mapRef, "route-stops", routeStopsFeatures);
+  useRafSetData(mapRef, "route-stops", routeStopsFeatures, styleReady);
 
   const followingRouteFeatures = useMemo(
     () => buildFollowingRouteFeatures(followingRoute),
     [followingRoute],
   );
-  useRafSetData(mapRef, "current-following-route", followingRouteFeatures);
+  useRafSetData(mapRef, "current-following-route", followingRouteFeatures, styleReady);
 
   const gbfsStationsFeatures = useMemo(
     () => buildGbfsStationsGeoJson(gbfsStations, selectedGbfsStationId),
@@ -485,131 +528,145 @@ export function MapContainer() {
 
   return (
     <div className="relative h-full w-full">
-      <MapGL
-        key={resolvedMapStyleId}
-        ref={mapRef}
-        mapStyle={mapStyle}
-        initialViewState={{
-          longitude: 16,
-          latitude: 45.8,
-          zoom: 12,
-        }}
-        hash
-        // @ts-expect-error antialias exists in maplibre-gl but not in mapbox-gl types
-        antialias
-        interactiveLayerIds={["route-stops-label", "vehicle-markers", "gbfs-station-markers"]}
-        onClick={handleClick}
-        onLoad={onLoad}
-        onDragStart={onDragStart}
-        className="h-full w-full"
-      >
-        {/* @ts-expect-error visualizeZoom exists in maplibre-gl but not in mapbox-gl types */}
-        <NavigationControl visualizeZoom visualizePitch />
+      {mapStyle && (
+        <MapGL
+          key={resolvedMapStyleId}
+          ref={mapRef}
+          mapStyle={mapStyle}
+          initialViewState={{
+            longitude: 16,
+            latitude: 45.8,
+            zoom: 12,
+          }}
+          hash
+          // @ts-expect-error antialias exists in maplibre-gl but not in mapbox-gl types
+          antialias
+          interactiveLayerIds={["route-stops-label", "vehicle-markers", "gbfs-station-markers"]}
+          onClick={handleClick}
+          onData={handleMapData}
+          onDragStart={onDragStart}
+          className="h-full w-full"
+        >
+          {/* @ts-expect-error visualizeZoom exists in maplibre-gl but not in mapbox-gl types */}
+          <NavigationControl visualizeZoom visualizePitch />
 
-        <GeolocateControl
-          key={
-            geolocPermission === "granted"
-              ? "geo-granted"
-              : geolocPermission === "denied"
-                ? "geo-denied"
-                : "geo-other"
-          }
-          positionOptions={{ enableHighAccuracy: true }}
-          trackUserLocation
-          showAccuracyCircle
-          showUserLocation
-        />
+          <GeolocateControl
+            key={
+              geolocPermission === "granted"
+                ? "geo-granted"
+                : geolocPermission === "denied"
+                  ? "geo-denied"
+                  : "geo-other"
+            }
+            positionOptions={{ enableHighAccuracy: true }}
+            trackUserLocation
+            showAccuracyCircle
+            showUserLocation
+          />
 
-        {iconsReady && (
-          <Source id="vehicles" type="geojson" data={emptyGeoJSON}>
+          {iconsReady && (
+            <Source id="vehicles" type="geojson" data={emptyGeoJSON}>
+              <Layer
+                id="vehicle-markers"
+                type="symbol"
+                layout={vehicleMarkerLayout}
+                paint={vehicleMarkerPaint}
+                filter={[
+                  "match",
+                  ["get", "vehicleType"],
+                  "tram",
+                  showTrams,
+                  "bus",
+                  showBuses,
+                  true,
+                ]}
+              />
+            </Source>
+          )}
+
+          {iconsReady && (
+            <Source id="gbfs-stations" type="geojson" data={emptyGeoJSON}>
+              <Layer
+                id="gbfs-station-markers"
+                type="symbol"
+                beforeId="route-stop-dot"
+                layout={{
+                  "icon-image": ["get", "iconName"],
+                  "icon-allow-overlap": true,
+                  "icon-ignore-placement": true,
+                  "symbol-z-order": "source",
+                  "symbol-sort-key": ["get", "sortKey"],
+                  visibility: gbfsLayerVisible ? "visible" : "none",
+                }}
+              />
+            </Source>
+          )}
+
+          <Source id="delta-move-lines" type="geojson" data={emptyGeoJSON}>
             <Layer
-              id="vehicle-markers"
-              type="symbol"
-              layout={vehicleMarkerLayout}
-              paint={vehicleMarkerPaint}
+              id="delta-move-lines"
+              type="line"
+              beforeId="route-stop-dot"
               filter={["match", ["get", "vehicleType"], "tram", showTrams, "bus", showBuses, true]}
+              paint={{
+                "line-width": 5,
+                "line-color": ["get", "color"],
+                "line-opacity": 0.5,
+              }}
+              layout={{
+                "line-join": "round",
+                "line-cap": "round",
+                visibility: searchActive || !vehiclesLayerVisible ? "none" : "visible",
+              }}
             />
-          </Source>
-        )}
-
-        {iconsReady && (
-          <Source id="gbfs-stations" type="geojson" data={emptyGeoJSON}>
             <Layer
-              id="gbfs-station-markers"
+              id="delta-move-lines-arrow"
               type="symbol"
               beforeId="route-stop-dot"
+              filter={["match", ["get", "vehicleType"], "tram", showTrams, "bus", showBuses, true]}
               layout={{
-                "icon-image": ["get", "iconName"],
-                "icon-allow-overlap": true,
-                "icon-ignore-placement": true,
-                "symbol-z-order": "source",
-                "symbol-sort-key": ["get", "sortKey"],
-                visibility: gbfsLayerVisible ? "visible" : "none",
+                "symbol-placement": "line",
+                "symbol-avoid-edges": false,
+                "symbol-spacing": 1,
+                "icon-image": "arrow-head",
+                "text-ignore-placement": true,
+                "icon-size": 0.25,
+                visibility: searchActive || !vehiclesLayerVisible ? "none" : "visible",
               }}
             />
           </Source>
-        )}
 
-        <Source id="delta-move-lines" type="geojson" data={emptyGeoJSON}>
-          <Layer
-            id="delta-move-lines"
-            type="line"
-            filter={["match", ["get", "vehicleType"], "tram", showTrams, "bus", showBuses, true]}
-            paint={{
-              "line-width": 5,
-              "line-color": ["get", "color"],
-              "line-opacity": 0.5,
-            }}
-            layout={{
-              "line-join": "round",
-              "line-cap": "round",
-              visibility: searchActive || !vehiclesLayerVisible ? "none" : "visible",
-            }}
-          />
-          <Layer
-            id="delta-move-lines-arrow"
-            type="symbol"
-            filter={["match", ["get", "vehicleType"], "tram", showTrams, "bus", showBuses, true]}
-            layout={{
-              "symbol-placement": "line",
-              "symbol-avoid-edges": false,
-              "symbol-spacing": 1,
-              "icon-image": "arrow-head",
-              "text-ignore-placement": true,
-              "icon-size": 0.25,
-              visibility: searchActive || !vehiclesLayerVisible ? "none" : "visible",
-            }}
-          />
-        </Source>
-
-        <Source id="current-following-route" type="geojson" data={emptyGeoJSON}>
-          <Layer
-            id="current-following-route"
-            type="line"
-            paint={{
-              "line-width": 5,
-              "line-color": ["get", "color"],
-              "line-opacity": 0.5,
-            }}
-            layout={{
-              "line-join": "round",
-              "line-cap": "round",
-            }}
-          />
-          <Layer
-            id="current-following-route-arrow"
-            type="symbol"
-            layout={{
-              "symbol-placement": "line",
-              "symbol-spacing": 1,
-              "icon-allow-overlap": true,
-              "icon-image": "arrow-head",
-              "icon-size": 0.25,
-              visibility: "visible",
-            }}
-          />
-        </Source>
-      </MapGL>
+          <Source id="current-following-route" type="geojson" data={emptyGeoJSON}>
+            <Layer
+              id="current-following-route"
+              beforeId="route-stop-dot"
+              type="line"
+              paint={{
+                "line-width": 5,
+                "line-color": ["get", "color"],
+                "line-opacity": 0.5,
+              }}
+              layout={{
+                "line-join": "round",
+                "line-cap": "round",
+              }}
+            />
+            <Layer
+              id="current-following-route-arrow"
+              beforeId="route-stop-dot"
+              type="symbol"
+              layout={{
+                "symbol-placement": "line",
+                "symbol-spacing": 1,
+                "icon-allow-overlap": true,
+                "icon-image": "arrow-head",
+                "icon-size": 0.25,
+                visibility: "visible",
+              }}
+            />
+          </Source>
+        </MapGL>
+      )}
     </div>
   );
 }

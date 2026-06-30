@@ -40,3 +40,6 @@ type-check:
 
 preview: build
     bun run preview
+
+og-image:
+    ./scripts/generate-og.sh

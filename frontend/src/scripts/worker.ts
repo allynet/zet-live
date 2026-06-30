@@ -239,7 +239,6 @@ async function fetchWithRetry() {
 
 function startFetchingStops() {
   stopFetchingStops();
-  void fetchWithRetry();
   fetchIntervalId = setInterval(() => void fetchWithRetry(), 60_000 + 60_000 * Math.random());
 }
 

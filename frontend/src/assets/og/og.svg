@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+  Source for the social preview image rendered to frontend/public/og.png.
+
+  Regenerate after editing with:  just frontend og-image
+  (requires rsvg-convert / librsvg — see scripts/generate-og.sh)
+-->
+<svg width="1200" height="630" viewBox="0 0 1200 630" version="1.1"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e293b"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Brand tile: blue rounded square with white Z (mirrors the favicon mark) -->
+  <rect x="85" y="125" width="380" height="380" rx="80" fill="#1264ab"/>
+  <g transform="translate(85,125) scale(0.7421875)" fill="#ffffff">
+    <rect x="10" y="10" width="425" height="85" rx="16.9"/>
+    <rect x="242" y="-17" width="110" height="425" transform="rotate(13.5)"/>
+    <rect x="77" y="417" width="425" height="85" rx="16.9"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="548" y="286"         font-family="IosevkAllyP, DejaVu Sans, sans-serif"
+        font-size="116" font-weight="700" letter-spacing="-2"
+        fill="#ffffff">ZET Live</text>
+
+  <!-- Brand accent underline -->
+  <rect x="552" y="318" width="150" height="7" rx="3.5" fill="#1264ab"/>
+
+  <!-- Croatian tagline, split across two lines to fit the frame -->
+  <text x="552" y="380"         font-family="IosevkAllyP, DejaVu Sans, sans-serif"
+        font-size="36" font-weight="400" fill="#cbd5e1">Trenutni položaj i red vožnje</text>
+  <text x="552" y="425"         font-family="IosevkAllyP, DejaVu Sans, sans-serif"
+        font-size="36" font-weight="400" fill="#cbd5e1">ZET vozila — uživo</text>
+</svg>

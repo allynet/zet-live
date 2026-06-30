@@ -78,17 +78,15 @@ export function processMessage(message: V1Message) {
       const vehicle = VehicleV1.fromSimple(row);
       const key = vehicle.getMapId();
 
-      const existing = currentMap.get(key);
-      if (existing) {
-        if (existing.prevLat !== null && existing.prevLng !== null) {
-          const isBus = vehicle.routeId.length > 2;
-          locationPairs.push({
-            from: [existing.prevLng, existing.prevLat],
-            to: [vehicle.lng, vehicle.lat],
-            color: isBus ? "#00f" : "#f00",
-            vehicleType: isBus ? "bus" : "tram",
-          });
-        }
+      const prev = currentMap.get(key) ?? vehicle;
+      if (prev.prevLat !== null && prev.prevLng !== null) {
+        const isBus = vehicle.routeId.length > 2;
+        locationPairs.push({
+          from: [prev.prevLng, prev.prevLat],
+          to: [vehicle.lng, vehicle.lat],
+          color: isBus ? "#00f" : "#f00",
+          vehicleType: isBus ? "bus" : "tram",
+        });
       }
 
       newMap.set(key, vehicle);

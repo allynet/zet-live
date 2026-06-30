@@ -365,6 +365,18 @@ async fn send_initial_state(
         }
     }
 
+    {
+        let simple_stops = INITIAL_STATE.simple_stops().await.clone();
+        if !simple_stops.is_empty() {
+            let res = sender.send(Message::Binary(simple_stops)).await;
+
+            if let Err(e) = res {
+                error!(?e, "Error sending initial simple stops");
+                return Err(e);
+            }
+        }
+    }
+
     Ok(())
 }
 
